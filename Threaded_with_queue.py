@@ -11,7 +11,7 @@ from model import *
 from detect_utils import *
 
 #Define queue to store frames
-frame_queue = queue.Queue(maxsize=10)
+frame_queue = queue.Queue(maxsize=1)
 
 #define model
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -27,7 +27,8 @@ def get_frame():
         ret,frame = cap.read()
         if not ret:
             break
-        frame_queue.put(frame)
+        frame_pos = cv2.resize(frame, (300,300))
+        frame_queue.put(frame_pos)
     cap.release()
 
 #fund object detection
@@ -49,8 +50,8 @@ def object_detection():
 		# press `q` to exit
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
-terminal_flag = False
+    cap.release()
+    cv2.destroyAllWindows()
 
 get_frame_thread = threading.Thread(target=get_frame)
 get_frame_thread.start()
@@ -58,6 +59,5 @@ get_frame_thread.start()
 object_detection_thread = threading.Thread(target=object_detection)
 object_detection_thread.start()
 
-while True:
-    if terminal_flag:
-        break
+get_frame_thread.join()
+object_detection_thread.join()
