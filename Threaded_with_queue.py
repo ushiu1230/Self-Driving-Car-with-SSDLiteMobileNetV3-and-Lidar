@@ -61,6 +61,3 @@ object_detection_thread.start()
 while True:
     if terminal_flag:
         break
-
-get_frame_thread.join()
-object_detection_thread.join()
