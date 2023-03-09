@@ -20,7 +20,7 @@ frame_queue = queue.Queue(maxsize=1)
 #define model
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 model = Model4(device)
-#model = model.half()
+model = model.half()
 model = model.to(device)
 
 

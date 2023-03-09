@@ -18,7 +18,7 @@ def predict(image, model, device, detection_threshold):
     """
     # transform the image to tensor
     image = transform(image)
-    #image = image.half()
+    image = image.half()
     image = image.to(device)
     # add a batch dimension
     image = image.unsqueeze(0) 
