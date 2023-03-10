@@ -27,7 +27,7 @@ def get_frame():
         ret,frame = cap.read()
         if not ret:
             break
-        frame_pos = cv2.resize(frame, (300,300))
+        frame_pos = cv2.resize(frame, (320,320))
         frame_queue.put(frame_pos)
     cap.release()
 
@@ -36,9 +36,8 @@ def object_detection():
     while True:
         frame = frame_queue.get()
         start_time = time.time()
-        with torch.no_grad():
-            boxes, classes, labels = predict(frame, model, device, 0.9)
-            # get predictions for the current frame  
+        boxes, classes, labels = predict(frame, model, device, 0.9)
+        # get predictions for the current frame  
         # draw boxes
         det_image = draw_boxes(boxes, classes, labels, frame)
         fps = 1/(time.time() - start_time)
