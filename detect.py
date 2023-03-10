@@ -9,12 +9,9 @@ import cv2
 # define the computation device
 # select device (whether GPU or CPU)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model = Model1(device)
-
-quantized_model = torch.quantization.quantize_dynamic(model,{nn.Conv2d}, dtype=torch.qint8)
-quantized_model.eval()
-#model = model.half()
-quantized_model.to(device)
+model = Model4(device)
+model = model.half()
+model.to(device)
 
 cap = cv2.VideoCapture(0)
 if (cap.isOpened() == False):
@@ -31,7 +28,7 @@ while(cap.isOpened()):
         # get the start time
         start_time = time.time()
         with torch.no_grad():
-            boxes, classes, labels = predict(frame, quantized_model, device, 0.9)
+            boxes, classes, labels = predict(frame, model, device, 0.9)
             # get predictions for the current frame  
         # draw boxes and show current frame on screen
         image = draw_boxes(boxes, classes, labels, frame)

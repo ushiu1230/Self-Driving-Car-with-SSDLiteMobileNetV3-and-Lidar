@@ -52,11 +52,12 @@ def object_detection():
     cap.release()
     cv2.destroyAllWindows()
 
-get_frame_thread = threading.Thread(target=get_frame)
-get_frame_thread.start()
+if __name__ == "__main__":
+    get_frame_thread = threading.Thread(target=get_frame)
+    get_frame_thread.start()
 
-object_detection_thread = threading.Thread(target=object_detection)
-object_detection_thread.start()
+    object_detection_thread = threading.Thread(target=object_detection)
+    object_detection_thread.start()
 
-get_frame_thread.join()
-object_detection_thread.join()
+    get_frame_thread.join()
+    object_detection_thread.join()

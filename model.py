@@ -159,7 +159,7 @@ def Model1(device):
     num_anchors = model.anchor_generator.num_anchors_per_location()
     norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
     model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
-    checkpoint = torch.load("M1.pth", map_location = device)
+    checkpoint = torch.load("models/M1.pth", map_location = device)
     model.load_state_dict(checkpoint['model'])    
     model.eval()
     return model
@@ -174,7 +174,7 @@ def Model4(device):
   norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
   model.head.regression_head = SSDLiteRegressionHead(in_channels, num_anchors, norm_layer)
   model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
-  checkpoint = torch.load("models\M4.pth", map_location = device)
+  checkpoint = torch.load("models/M4.pth", map_location = device)
   model.load_state_dict(checkpoint['model'])
   model.eval()
   return model
