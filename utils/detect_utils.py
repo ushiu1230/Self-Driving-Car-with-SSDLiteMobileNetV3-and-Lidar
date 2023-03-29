@@ -2,7 +2,7 @@ import torchvision.transforms as transforms
 import cv2
 import numpy as np
 import torch
-from coco_names import coco_names   
+from utils.coco_names import coco_names   
 # this will help us create a different color for each class
 COLORS = np.random.uniform(0, 255, size=(len(coco_names), 3))
 # define the torchvision image transforms

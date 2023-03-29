@@ -6,15 +6,15 @@ import torch
 import cv2
 import queue
 
-from coco_names import coco_names
-from model import *
-from detect_utils import *
+from utils.coco_names import coco_names
+from models.Model4 import *
+from utils.detect_utils import *
 
 #Define queue to store frames
 frame_queue = queue.Queue(maxsize=1)
 
 #define model
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+device = torch.device('cuda')
 model = Model4(device)
 model = model.half()
 model = model.to(device)
@@ -22,21 +22,23 @@ model = model.to(device)
 
 #func process frame
 def get_frame():
+    global cap
     cap = cv2.VideoCapture(0)
     while True:
         ret,frame = cap.read()
         if not ret:
             break
-        frame_pos = cv2.resize(frame, (320,320))
+        frame_pos = cv2.resize(frame, (300,300))
         frame_queue.put(frame_pos)
     cap.release()
 
 #fund object detection
 def object_detection():
+    global cap
     while True:
         frame = frame_queue.get()
         start_time = time.time()
-        boxes, classes, labels = predict(frame, model, device, 0.9)
+        boxes, classes, labels = predict(frame, model, device, 0.7)
         # get predictions for the current frame  
         # draw boxes
         det_image = draw_boxes(boxes, classes, labels, frame)

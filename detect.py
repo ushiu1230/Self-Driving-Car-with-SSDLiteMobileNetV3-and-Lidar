@@ -1,9 +1,13 @@
-from coco_names import coco_names
-from model import *
-from detect_utils import *
+from utils.coco_names import coco_names
+from models.Model1 import *
+from models.Model2 import *
+from models.Model3 import *
+from models.Model4 import *
+from utils.detect_utils import *
 import time
 import torch
 import cv2
+
 # construct the argument parser
 
 # define the computation device
