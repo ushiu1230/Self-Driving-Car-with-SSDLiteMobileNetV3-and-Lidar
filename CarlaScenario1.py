@@ -1,16 +1,3 @@
-import glob
-import os
-import sys
-
-try:
-    sys.path.append(glob.glob('PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
-        sys.version_info.major,
-        sys.version_info.minor,
-        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
-except IndexError:
-    pass
-
-
 import carla 
 import math
 import random
@@ -110,8 +97,6 @@ def main():
     auto_mode = True
     count = 300
 
-
-
     #----------------------------------------------------------------------------------------------------------
     # *******CONTROL******
     # In synchronous mode, we need to run the simulation to fly the spectator
@@ -123,14 +108,14 @@ def main():
         spectator.set_transform(transform)
         if (manual_mode and count != 0):
             print("tick: ", count, "speed: ", vehicle.get_acceleration())
-            if (count >= 100):
+            if (count >= 160):
                 vehicle.apply_control(carla.VehicleControl(throttle=0.15, steer=0))
                 count = count - 1
-            elif (count >= 50 and count < 100):
-                vehicle.apply_control(carla.VehicleControl(throttle=0.15, steer=-0.3))
+            elif (count >= 80 and count < 160):
+                vehicle.apply_control(carla.VehicleControl(throttle=0.1, steer=-0.3))
                 count = count - 1
-            elif (count > 0 and count < 50):
-                vehicle.apply_control(carla.VehicleControl(throttle=0, steer=0))
+            elif (count > 0 and count < 80):
+                vehicle.apply_control(carla.VehicleControl(throttle=0.1, steer=0.3))
                 count = count - 1
         else: 
             manual_mode = False
