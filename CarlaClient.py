@@ -41,13 +41,12 @@ print(vehicle_bp)
 
 #init npc and actor spawn location
 spawn_points = random.choice(world.get_map().get_spawn_points())
-#npc_1_spawn_point = carla.Transform(carla.Location(x=-33.574535, y=130.005219, z=0.001447), carla.Rotation(pitch=0.068548, yaw=-179.642746, roll=-0.000061))
-#npc_2_spawn_point = carla.Transform(carla.Location(-18.745386, 130.095306, 0.001928), carla.Rotation(-0.014343, -179.649887, 0.000042))
-
 vehicle = world.try_spawn_actor(vehicle_bp, spawn_points)
 spectator = world.get_spectator()
 transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
 spectator.set_transform(transform)
+
+vehicle.set_autopilot(True)
 
 #camera setup
 cam_bp = bp_lib.find("sensor.camera.rgb")
@@ -59,34 +58,33 @@ cam_sensor = world.spawn_actor(cam_bp, spawn_cam_point, attach_to=vehicle)
 camera_data = {'image': np.zeros((IM_HEIGHT, IM_WIDTH, 3))}
 cam_sensor.listen(lambda image: camera_callback(image, camera_data))
 
-vehicle.set_autopilot(True)
-
-cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
-cv2.imshow('rgb camera', camera_data["image"])
-cv2.waitkey(1)
-
-while True:
-    cv2.imshow('rgb camera', camera_data["image"])
-
-    if cv2.waitKey(1) == ord('q'):
-        break
-
-cv2.destroyAllWindows()
+# cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+# cv2.imshow('rgb camera', camera_data["image"])
+# cv2.waitKey(1)
 
 # while True:
-#     frame = camera_data['image'][:,:,:3]
-#     start_time = time.time()
-#     boxes, classes, labels = predict(frame, model, device, 0.9)
-#     # get predictions for the current frame  
-#     # draw boxes
-#     det_image = draw_boxes(boxes, classes, labels, frame)
-#     fps = 1/(time.time() - start_time)
-#     # write the FPS on the current frame
-#     cv2.putText(det_image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-#     #convert from BGR to RGB color format
-#     det_image = cv2.cvtColor(det_image, cv2.COLOR_BGR2RGB)
-#     cv2.imshow('Detection', det_image)
-#     # press `q` to exit
-#     if cv2.waitKey(1) & 0xFF == ord('q'):
+#     cv2.imshow('rgb camera', camera_data["image"])
+
+#     if cv2.waitKey(1) == ord('q'):
 #         break
+
 # cv2.destroyAllWindows()
+
+while True:
+    cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+    frame = camera_data['image'][:,:,:3]
+    start_time = time.time()
+    boxes, classes, labels = predict(frame, model, device, 0.9)
+    # get predictions for the current frame  
+    # draw boxes
+    det_image = draw_boxes(boxes, classes, labels, frame)
+    fps = 1/(time.time() - start_time)
+    # write the FPS on the current frame
+    cv2.putText(det_image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    #convert from BGR to RGB color format
+    det_image = cv2.cvtColor(det_image, cv2.COLOR_BGR2RGB)
+    cv2.imshow('Detection', det_image)
+    # press `q` to exit
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+cv2.destroyAllWindows()

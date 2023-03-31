@@ -32,18 +32,18 @@ def camera_callback(image, data_dict):
 
 #------------------------------------------------------------
 # Func process frame
-def get_frame(camera_data):
-    frame = camera_data['image'][:,:,:3]
+def get_frame(data):
     while True:
-        frame_pos = cv2.resize(frame, (320,320))
-        frame_queue.put(frame_pos)
+        frame = data[:,:,:3]
+        frame_queue.put(frame)
 
 # Func object detection
 def object_detection():
     while True:
         frame = frame_queue.get()
+        print(frame)
         start_time = time.time()
-        boxes, classes, labels = predict(frame, model, device, 0.7)
+        boxes, classes, labels = predict(frame, model, device, 0.9)
         # get predictions for the current frame  
         # draw boxes
         det_image = draw_boxes(boxes, classes, labels, frame)
@@ -52,6 +52,7 @@ def object_detection():
         cv2.putText(det_image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 		#convert from BGR to RGB color format
         det_image = cv2.cvtColor(det_image, cv2.COLOR_BGR2RGB)
+        cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
         cv2.imshow('Detection', det_image)
 		# press `q` to exit
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -65,18 +66,19 @@ def main():
     #----------------------------------------------------------------------------------------------------------
     # SET UP CONNECTION 
     # Connect to the client and retrieve the world object
-    client = carla.Client('192.168.1.9', 2000)
+    #client = carla.Client('192.168.1.9', 2000)
+    client = carla.Client('26.146.230.217', 2000)
     world = client.get_world()
 
     # Set up the simulator in synchronous mode
     settings = world.get_settings()
-    settings.synchronous_mode = True # Enables synchronous mode
-    settings.fixed_delta_seconds = 0.04
+    settings.synchronous_mode = False # Enables synchronous mode
+    #settings.fixed_delta_seconds = 0.05
     world.apply_settings(settings)
 
     # Set up the TM in synchronous mode
     traffic_manager = client.get_trafficmanager()
-    traffic_manager.set_synchronous_mode(True)
+    traffic_manager.set_synchronous_mode(False)
 
     # Set a seed so behaviour can be repeated if necessary
     traffic_manager.set_random_device_seed(0)
@@ -93,8 +95,8 @@ def main():
     spawn_points = world.get_map().get_spawn_points()
 
     # Draw the spawn point locations as numbers in the map
-    for i, spawn_point in enumerate(spawn_points):
-        world.debug.draw_string(spawn_point.location, str(i), life_time=10)
+    # for i, spawn_point in enumerate(spawn_points):
+    #     world.debug.draw_string(spawn_point.location, str(i), life_time=10)
 
     # Route 1
     spawn_point_1 =  spawn_points[60]
@@ -130,8 +132,6 @@ def main():
     cam_bp.set_attribute("fov", "110")
 
 
-
-
     # Spawn actor
     # Vehicle
     vehicle = world.try_spawn_actor(vehicle_bp, spawn_point_1)
@@ -151,7 +151,7 @@ def main():
     traffic_manager.set_path(vehicle, route_1)
 
     # Set maximum speed 
-    traffic_manager.global_percentage_speed_difference(75)
+    traffic_manager.global_percentage_speed_difference(70)
 
     # Ignore_Lights
     traffic_manager.ignore_lights_percentage(vehicle, 100)
@@ -168,23 +168,43 @@ def main():
     #----------------------------------------------------------------------------------------------------------
     cam_sensor.listen(lambda image: camera_callback(image, camera_data))
     
-    get_frame_thread = threading.Thread(target=get_frame, args=(camera_data,))
+    get_frame_thread = threading.Thread(target=get_frame, args=(camera_data['image'],))
     get_frame_thread.start()
 
     object_detection_thread = threading.Thread(target=object_detection)
     object_detection_thread.start()
 
-    get_frame_thread.join()
-    object_detection_thread.join()
-
     # *******CONTROL******
     # In synchronous mode, we need to run the simulation to fly the spectator
+
+
+    cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+
     while True:
         world.tick()
 
         #set viewpoint at main actor
         transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
         spectator.set_transform(transform)
+
+        print(camera_data['image'])
+        print(camera_data['image'][:,:,:3])
+        frame = camera_data['image'][:,:,:3]
+        start_time = time.time()
+        boxes, classes, labels = predict(frame, model, device, 0.9)
+        # get predictions for the current frame  
+        # draw boxes
+        det_image = draw_boxes(boxes, classes, labels, frame)
+        fps = 1/(time.time() - start_time)
+        # write the FPS on the current frame
+        cv2.putText(det_image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        #convert from BGR to RGB color format
+        # det_image = cv2.cvtColor(det_image, cv2.COLOR_BGR2RGB)
+        cv2.imshow('RGB Camera', det_image)
+        # press `q` to exit
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
         if (manual_mode and count != 0):
             print("tick: ", count, "speed: ", vehicle.get_acceleration())
             if (count >= 161):
@@ -200,11 +220,17 @@ def main():
             manual_mode = False
             vehicle.apply_control(carla.VehicleControl(throttle=0, steer=0))
             vehicle.set_autopilot(auto_mode) # Give TM control over vehicle
-       
+    if cam_bp:
+        cam_bp.detroy()
+    if vehicle:
+        vehicle.destroy()
+    cv2.destroyAllWindows()
+
+    get_frame_thread.join()
+    object_detection_thread.join()
         
 if __name__ == "__main__":
     try:
         main()
-        
     except KeyboardInterrupt:
         print(' - Exited by user.')
