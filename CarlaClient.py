@@ -15,7 +15,7 @@ from utils.detect_utils import *
 
 #------------------------------------------------------------
 #Define queue to store frames
-frame_queue = queue.Queue(maxsize=1)
+frame_queue = queue.Queue(maxsize=2)
 #------------------------------------------------------------
 #define model
 device = torch.device('cuda')
@@ -27,6 +27,45 @@ model = model.to(device)
 def camera_callback(image, data_dict):
     data_dict['image'] = np.reshape(np.copy(image.raw_data), (IM_HEIGHT, IM_WIDTH, 4))
 #------------------------------------------------------------
+
+
+#------------------------------------------------------------
+# Func process frame
+def get_frame():
+    while True:
+        print(camera_data['image'][:, :, :3])
+        frame_queue.put(camera_data['image'][:, :, :3])
+
+
+#-------------------------------------------------------------
+# Func object detection
+def object_detection():
+    # OpenCV named window for rendering
+    cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+    cv2.imshow('RGB Camera', camera_data['image'][:, :, :3])
+    cv2.waitKey(1)
+    while True:
+        frame = camera_data['image'][:, :, :3]
+        print(frame)
+        start_time = time.time()
+        boxes, classes, labels = predict(frame, model, device, 0.9)
+        # # get predictions for the current frame  
+        # # draw boxes
+        frame = draw_boxes(boxes, classes, labels, frame)
+        fps = 1/(time.time() - start_time)
+        # write the FPS on the current frame
+        cv2.putText(frame, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+		#convert from BGR to RGB color format
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        cv2.imshow('RGB Camera', frame)
+		# press `q` to exit
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    cv2.destroyAllWindows()
+
+
+
+
 
 IM_HEIGHT = 320
 IM_WIDTH = 320 
@@ -46,7 +85,7 @@ spectator = world.get_spectator()
 transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
 spectator.set_transform(transform)
 
-vehicle.set_autopilot(True)
+#vehicle.set_autopilot(True)
 
 #camera setup
 cam_bp = bp_lib.find("sensor.camera.rgb")
@@ -58,33 +97,41 @@ cam_sensor = world.spawn_actor(cam_bp, spawn_cam_point, attach_to=vehicle)
 camera_data = {'image': np.zeros((IM_HEIGHT, IM_WIDTH, 3))}
 cam_sensor.listen(lambda image: camera_callback(image, camera_data))
 
-# cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
-# cv2.imshow('rgb camera', camera_data["image"])
-# cv2.waitKey(1)
-
 # while True:
-#     cv2.imshow('rgb camera', camera_data["image"])
+#     print(camera_data["image"][:,:,:3])
+#     cv2.imshow('rgb camera', camera_data["image"][:,:,:3])
 
 #     if cv2.waitKey(1) == ord('q'):
 #         break
 
 # cv2.destroyAllWindows()
 
-while True:
-    cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
-    frame = camera_data['image'][:,:,:3]
-    start_time = time.time()
-    boxes, classes, labels = predict(frame, model, device, 0.9)
-    # get predictions for the current frame  
-    # draw boxes
-    det_image = draw_boxes(boxes, classes, labels, frame)
-    fps = 1/(time.time() - start_time)
-    # write the FPS on the current frame
-    cv2.putText(det_image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    #convert from BGR to RGB color format
-    det_image = cv2.cvtColor(det_image, cv2.COLOR_BGR2RGB)
-    cv2.imshow('Detection', det_image)
-    # press `q` to exit
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-cv2.destroyAllWindows()
+# while True:
+#     frame = camera_data['image'][:,:,:3]
+#     print(frame)
+#     start_time = time.time()
+#     boxes, classes, labels = predict(frame, model, device, 0.9)
+#     # get predictions for the current frame  
+#     # draw boxes
+#     det_image = draw_boxes(boxes, classes, labels, frame)
+#     fps = 1/(time.time() - start_time)
+#     # write the FPS on the current frame
+#     cv2.putText(det_image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+#     #convert from BGR to RGB color format
+#     det_image = cv2.cvtColor(det_image, cv2.COLOR_BGR2RGB)
+#     cv2.imshow('RGB Camera', det_image)
+#     # press `q` to exit
+#     if cv2.waitKey(1) & 0xFF == ord('q'):
+#         break
+# cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+
+    get_frame_thread = threading.Thread(target=get_frame)
+    get_frame_thread.start()
+
+    object_detection_thread = threading.Thread(target=object_detection)
+    object_detection_thread.start()
+
+    # get_frame_thread.join()
+    object_detection_thread.join()
