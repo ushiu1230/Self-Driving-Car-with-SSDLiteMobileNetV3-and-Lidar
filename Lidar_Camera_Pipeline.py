@@ -110,13 +110,17 @@ def lidar_callback(point_cloud, point_list):
 #-------------------------------------------------------------
 # Func object detection
 def object_detection():
+    # Start sensor
     cam_sensor.listen(lambda image: camera_callback(image, camera_data))
+
     # OpenCV named window for rendering
     cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
     cv2.imshow('RGB Camera', camera_data['image'][:, :, :3])
     cv2.waitKey(1)
     while True:
         world.tick()
+        # cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+        # cv2.imshow('RGB Camera', camera_data['image'][:, :, :3])
         frame = camera_data['image'][:, :, :3]
         start_time = time.time()
         boxes, classes, labels = predict(frame, model, device, 0.9)
@@ -135,11 +139,13 @@ def object_detection():
     #--------------------------------------------------------------------------
     # Close displayws and stop sensors
     cv2.destroyAllWindows()
+    sys.exit()
 
 def lidar_pointcloud():
+    # Start sensor
     point_list = o3d.geometry.PointCloud()
     lidar_sensor.listen(lambda data: lidar_callback(data, point_list))
-    # Open3D visualiser for LIDAR and RADAR
+    # Open3D visualiser for LIDAR
     vis = o3d.visualization.Visualizer()
     vis.create_window(
         window_name='Carla Lidar',
@@ -234,6 +240,7 @@ if __name__ == "__main__":
         # Set Camera Attribute
         cam_bp.set_attribute("image_size_x",f"{IM_WIDTH}")
         cam_bp.set_attribute("image_size_y",f"{IM_HEIGHT}")
+        cam_bp.set_attribute("sensor_tick", str(1.0 / SENSOR_FPS))
         camera_data = {'image': np.zeros((IM_HEIGHT, IM_WIDTH, 4))}
 
         # Set Lidar Attribute
@@ -304,8 +311,6 @@ if __name__ == "__main__":
             #set viewpoint at main actor
             transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
             spectator.set_transform(transform)
-
-            time.sleep(5)
             world.tick()
             
             if (manual_mode and count != 0):
