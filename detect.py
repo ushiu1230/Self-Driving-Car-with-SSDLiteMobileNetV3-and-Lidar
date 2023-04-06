@@ -1,8 +1,5 @@
 from utils.coco_names import coco_names
-from models.Model1 import *
-from models.Model2 import *
-from models.Model3 import *
-from models.Model4 import *
+from models.Model import *
 from utils.detect_utils import *
 import time
 import torch

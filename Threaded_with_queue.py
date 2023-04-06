@@ -7,7 +7,7 @@ import cv2
 import queue
 
 from utils.coco_names import coco_names
-from models.Model4 import *
+from models.Model import *
 from utils.detect_utils import *
 
 #Define queue to store frames

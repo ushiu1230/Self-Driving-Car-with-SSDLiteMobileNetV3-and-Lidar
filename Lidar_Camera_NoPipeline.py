@@ -11,7 +11,7 @@ from matplotlib import cm
 
 
 from utils.coco_names import coco_names
-from models.Model4 import *
+from models.Model import *
 from utils.detect_utils import *
 
 GLOBAL_FPS=60 # world tick rate
@@ -20,7 +20,7 @@ SENSOR_FPS=15 # sensor tick rate
 #------------------------------------------------------------
 # Define model
 device = torch.device('cuda')
-model = Model4(device)
+model = Model3(device)
 model = model.half()
 model = model.to(device)
 

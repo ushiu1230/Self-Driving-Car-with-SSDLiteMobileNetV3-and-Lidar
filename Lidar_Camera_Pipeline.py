@@ -8,12 +8,11 @@ import cv2
 import queue
 import open3d as o3d
 import torch
-import keyboard
 import sys
 
 from matplotlib import cm
 from utils.coco_names import coco_names
-from models.Model4 import *
+from models.Model import *
 from utils.detect_utils import *
 
 GLOBAL_FPS=60 # world tick rate
