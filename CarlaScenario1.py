@@ -12,6 +12,7 @@ from matplotlib import cm
 
 from utils.coco_names import coco_names
 from models.Model4 import *
+from models.Model2 import Model3
 from utils.detect_utils import *
 
 GLOBAL_FPS=60 # world tick rate
@@ -24,7 +25,7 @@ frame_queue = queue.Queue(maxsize=1)
 #------------------------------------------------------------
 #define model
 device = torch.device('cuda')
-model = Model4(device)
+model = Model3(device)
 model = model.half()
 model = model.to(device)
 

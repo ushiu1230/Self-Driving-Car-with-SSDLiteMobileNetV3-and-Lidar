@@ -40,6 +40,8 @@ def draw_boxes(boxes, classes, labels, image):
     """
     Draws the bounding box around a detected object.
     """
+    print(image.dtype)
+    image = image.astype(np.uint8)
     image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2RGB)
     for i, box in enumerate(boxes):
         color = COLORS[labels[i]]

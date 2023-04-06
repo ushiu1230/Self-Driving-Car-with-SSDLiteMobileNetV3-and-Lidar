@@ -148,7 +148,7 @@ def Model3(device):
   norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
   model.head.regression_head = SSDLiteRegressionHead(in_channels, num_anchors, norm_layer)
   model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 8, norm_layer)
-  checkpoint = torch.load("700.pth", map_location = device)
+  checkpoint = torch.load("models/700.pth", map_location = device)
   model.load_state_dict(checkpoint['model'])
   model.eval()
   return model

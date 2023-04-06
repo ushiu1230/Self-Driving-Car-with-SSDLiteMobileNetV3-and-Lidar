@@ -11,15 +11,13 @@ import carla
 
 from utils.coco_names import coco_names
 from models.Model4 import *
+from models.Model2 import Model3
 from utils.detect_utils import *
 
 #------------------------------------------------------------
-#Define queue to store frames
-frame_queue = queue.Queue(maxsize=2)
-#------------------------------------------------------------
 #define model
 device = torch.device('cuda')
-model = Model4(device)
+model = Model3(device)
 model = model.half()
 model = model.to(device)
 #------------------------------------------------------------
@@ -28,18 +26,7 @@ def camera_callback(image, data_dict):
     data_dict['image'] = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
     data_dict['image'] = np.reshape(np.copy(image.raw_data), (IM_HEIGHT, IM_WIDTH, 4))
     data_dict['image'] = data_dict['image'][:, :, :3]
-    data_dict['image'] = cv2.convertScaleAbs(data_dict['image'])
-
-#------------------------------------------------------------
-
-
-#------------------------------------------------------------
-# Func process frame
-def get_frame():
-    while True:
-        print(camera_data['image'][:, :, :3])
-        frame_queue.put(camera_data['image'][:, :, :3])
-
+    data_dict['image'] = data_dict['image'].astype(np.float32) / 255.0
 
 #-------------------------------------------------------------
 # Func object detection
@@ -69,14 +56,33 @@ def object_detection():
 
 
 
-
+GLOBAL_FPS=60 # world tick rate
+SENSOR_FPS=30 # sensor tick rate
 
 IM_HEIGHT = 320
 IM_WIDTH = 320 
 
+ #----------------------------------------------------------------------------------------------------------
+# SET UP CONNECTION 
+# Connect to the client and retrieve the world object
 client = carla.Client('192.168.1.9', 2000)
-
+#client = carla.Client('26.146.230.217', 2000)
+client.set_timeout(2.0)
 world = client.get_world()
+
+# Set up the simulator in synchronous mode
+settings = world.get_settings()
+settings.synchronous_mode = True # Enables synchronous mode
+settings.fixed_delta_seconds = 1 / GLOBAL_FPS
+world.apply_settings(settings)
+
+# Set up the TM in synchronous mode
+traffic_manager = client.get_trafficmanager()
+traffic_manager.set_synchronous_mode(True)
+
+# Set a seed so behaviour can be repeated if necessary
+traffic_manager.set_random_device_seed(0)
+random.seed(0)
 
 bp_lib = world.get_blueprint_library()
 vehicle_bp = bp_lib.filter("model3")[0]
@@ -95,24 +101,30 @@ spectator.set_transform(transform)
 cam_bp = bp_lib.find("sensor.camera.rgb")
 cam_bp.set_attribute("image_size_x",f"{IM_WIDTH}")
 cam_bp.set_attribute("image_size_y",f"{IM_HEIGHT}")
-cam_bp.set_attribute("fov", "110")
 spawn_cam_point = carla.Transform(carla.Location(x=1, z=1.5))
 cam_sensor = world.spawn_actor(cam_bp, spawn_cam_point, attach_to=vehicle)
 camera_data = {'image': np.zeros((IM_HEIGHT, IM_WIDTH, 3))}
 cam_sensor.listen(lambda image: camera_callback(image, camera_data))
 
 
-# # OpenCV named window for rendering
-# cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
-# cv2.imshow('RGB Camera', camera_data['image'])
-# cv2.waitKey(1)
+# OpenCV named window for rendering
+cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+cv2.imshow('RGB Camera', camera_data['image'])
+cv2.waitKey(1)
+count = 0 
+vehicle.set_autopilot(False)
 
 while True:
+    world.tick()
+    print(count)
+    if count == 200:
+        vehicle.set_autopilot(True)
     frame = camera_data['image']
     # start_time = time.time()
+    print(frame.shape)   
     # boxes, classes, labels = predict(frame, model, device, 0.9)
     # # get predictions for the current frame  
-    # # draw boxes
+    # # draw boxes                                                                               
     # frame = draw_boxes(boxes, classes, labels, frame)
     # fps = 1/(time.time() - start_time)
     # # write the FPS on the current frame
@@ -123,8 +135,14 @@ while True:
     # press `q` to exit
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-cv2.destroyAllWindows()
 
+    count += 1
+cv2.destroyAllWindows()
+cam_sensor.stop()
+cam_sensor.destroy()
+# vis.destroy_window()
+for actor in world.get_actors().filter('*vehicle*'):
+    actor.destroy()
 # if __name__ == "__main__":
 
 #     get_frame_thread = threading.Thread(target=get_frame)

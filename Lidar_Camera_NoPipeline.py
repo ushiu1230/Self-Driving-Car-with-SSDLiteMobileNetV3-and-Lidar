@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
         # Set up the TM in synchronous mode
         traffic_manager = client.get_trafficmanager()
-        # traffic_manager.set_synchronous_mode(True)
+        traffic_manager.set_synchronous_mode(True)
 
         # Set a seed so behaviour can be repeated if necessary
         traffic_manager.set_random_device_seed(0)
@@ -186,18 +186,18 @@ if __name__ == "__main__":
         lidar_bp.set_attribute('dropoff_zero_intensity', '0.0')
         point_list = o3d.geometry.PointCloud()
 
-        # # Open3D visualiser for LIDAR and RADAR
-        # vis = o3d.visualization.Visualizer()
-        # vis.create_window(
-        #     window_name='Carla Lidar',
-        #     width=480,
-        #     height=270,
-        #     left=240,
-        #     top=135)
-        # vis.get_render_option().background_color = [0.05, 0.05, 0.05]
-        # vis.get_render_option().point_size = 1
-        # vis.get_render_option().show_coordinate_frame = True
-        # add_open3d_axis(vis)
+        # Open3D visualiser for LIDAR and RADAR
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(
+            window_name='Carla Lidar',
+            width=480,
+            height=270,
+            left=240,
+            top=135)
+        vis.get_render_option().background_color = [0.05, 0.05, 0.05]
+        vis.get_render_option().point_size = 1
+        vis.get_render_option().show_coordinate_frame = True
+        add_open3d_axis(vis)
         
         #---------------------------------------------------------------------------
         # Spawn actor
@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
         # Start sensors
         cam_sensor.listen(lambda image: camera_callback(image, camera_data))
-        # lidar_sensor.listen(lambda data: lidar_callback(data, point_list))
+        lidar_sensor.listen(lambda data: lidar_callback(data, point_list))
 
 
         #----------------------------------------------------------------------------
@@ -241,13 +241,18 @@ if __name__ == "__main__":
 
 
         #----------------------------------------------------------------------------------------------------------
+
+        # *******CONTROL******
         # Set Angle and Speed for car
         manual_mode = False
         auto_mode = False
         count = 100
-
         frame = 0
-        # *******CONTROL******
+        # OpenCV named window for rendering
+        cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+        cv2.imshow('RGB Camera', camera_data['image'])
+        cv2.waitKey(1)
+
         # In synchronous mode, we need to run the simulation to fly the spectator
         while True:
                 
@@ -255,24 +260,25 @@ if __name__ == "__main__":
             transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
             spectator.set_transform(transform)
 
-            # if frame == 2:
-            #     vis.add_geometry(point_list)
-            #     auto_mode = True
-            # vis.update_geometry(point_list)
+            if frame == 2:
+                vis.add_geometry(point_list)
+                auto_mode = True
+            vis.update_geometry(point_list)
 
-            # vis.poll_events()
-            # vis.update_renderer()
-            # # # This can fix Open3D jittering issues:
-            # time.sleep(0.005)
+            vis.poll_events()
+            vis.update_renderer()
+            # This can fix Open3D jittering issues:
+            time.sleep(0.005)
 
             world.tick()
             
-            image = camera_data['image']
-            # start_time = time.time()
-            boxes, classes, labels = predict(image, model, device, 0.9)
+            image = camera_data['image'][:, :, :3]
+            start_time = time.time()
+            boxes, classes, labels = predict(camera_data['image'][:, :, :3], model, device, 0.9)
+            print(boxes, classes, labels)
             # # get predictions for the current frame  
             # # draw boxes
-            image = draw_boxes(boxes, classes, labels, image)
+            # image = draw_boxes(boxes, classes, labels, camera_data['image'])
             # fps = 1/(time.time() - start_time)
             # # write the FPS on the current frame
             # cv2.putText(image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -308,6 +314,6 @@ if __name__ == "__main__":
         lidar_sensor.destroy()
         cam_sensor.stop()
         cam_sensor.destroy()
-        # vis.destroy_window()
+        vis.destroy_window()
         for actor in world.get_actors().filter('*vehicle*'):
             actor.destroy()
