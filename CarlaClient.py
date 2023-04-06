@@ -25,7 +25,11 @@ model = model.to(device)
 #------------------------------------------------------------
 
 def camera_callback(image, data_dict):
+    data_dict['image'] = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
     data_dict['image'] = np.reshape(np.copy(image.raw_data), (IM_HEIGHT, IM_WIDTH, 4))
+    data_dict['image'] = data_dict['image'][:, :, :3]
+    data_dict['image'] = cv2.convertScaleAbs(data_dict['image'])
+
 #------------------------------------------------------------
 
 
@@ -97,41 +101,37 @@ cam_sensor = world.spawn_actor(cam_bp, spawn_cam_point, attach_to=vehicle)
 camera_data = {'image': np.zeros((IM_HEIGHT, IM_WIDTH, 3))}
 cam_sensor.listen(lambda image: camera_callback(image, camera_data))
 
-# while True:
-#     print(camera_data["image"][:,:,:3])
-#     cv2.imshow('rgb camera', camera_data["image"][:,:,:3])
 
-#     if cv2.waitKey(1) == ord('q'):
-#         break
+# # OpenCV named window for rendering
+# cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
+# cv2.imshow('RGB Camera', camera_data['image'])
+# cv2.waitKey(1)
 
-# cv2.destroyAllWindows()
+while True:
+    frame = camera_data['image']
+    # start_time = time.time()
+    # boxes, classes, labels = predict(frame, model, device, 0.9)
+    # # get predictions for the current frame  
+    # # draw boxes
+    # frame = draw_boxes(boxes, classes, labels, frame)
+    # fps = 1/(time.time() - start_time)
+    # # write the FPS on the current frame
+    # cv2.putText(frame, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    # # convert from BGR to RGB color format
+    # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    cv2.imshow('RGB Camera', frame)
+    # press `q` to exit
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+cv2.destroyAllWindows()
 
-# while True:
-#     frame = camera_data['image'][:,:,:3]
-#     print(frame)
-#     start_time = time.time()
-#     boxes, classes, labels = predict(frame, model, device, 0.9)
-#     # get predictions for the current frame  
-#     # draw boxes
-#     det_image = draw_boxes(boxes, classes, labels, frame)
-#     fps = 1/(time.time() - start_time)
-#     # write the FPS on the current frame
-#     cv2.putText(det_image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-#     #convert from BGR to RGB color format
-#     det_image = cv2.cvtColor(det_image, cv2.COLOR_BGR2RGB)
-#     cv2.imshow('RGB Camera', det_image)
-#     # press `q` to exit
-#     if cv2.waitKey(1) & 0xFF == ord('q'):
-#         break
-# cv2.destroyAllWindows()
+# if __name__ == "__main__":
 
-if __name__ == "__main__":
+#     get_frame_thread = threading.Thread(target=get_frame)
+#     get_frame_thread.start()
 
-    get_frame_thread = threading.Thread(target=get_frame)
-    get_frame_thread.start()
+#     object_detection_thread = threading.Thread(target=object_detection)
+#     object_detection_thread.start()
 
-    object_detection_thread = threading.Thread(target=object_detection)
-    object_detection_thread.start()
-
-    # get_frame_thread.join()
-    object_detection_thread.join()
+#     # get_frame_thread.join()
+#     object_detection_thread.join()

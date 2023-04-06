@@ -5,24 +5,17 @@ import numpy as np
 import threading
 import time
 import cv2
-import queue
 import open3d as o3d
 import torch
-import keyboard
-import sys
-
 from matplotlib import cm
+
+
 from utils.coco_names import coco_names
 from models.Model4 import *
 from utils.detect_utils import *
 
 GLOBAL_FPS=60 # world tick rate
 SENSOR_FPS=15 # sensor tick rate
-
-
-#------------------------------------------------------------
-# Define queue to store frames
-frame_queue = queue.Queue(maxsize=1)
 
 #------------------------------------------------------------
 # Define model
@@ -31,8 +24,8 @@ model = Model4(device)
 model = model.half()
 model = model.to(device)
 
+
 #------------------------------------------------------------
-# Image size
 IM_HEIGHT = 320
 IM_WIDTH = 320 
 
@@ -63,10 +56,14 @@ def add_open3d_axis(vis):
         [0.0, 0.0, 1.0]]))
     vis.add_geometry(axis)
 
+
+
 #-------------------------------------------------------------------
 # Get data from camera
 def camera_callback(image, data_dict):
+    data_dict['image'] = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
     data_dict['image'] = np.reshape(np.copy(image.raw_data), (IM_HEIGHT, IM_WIDTH, 4))
+    data_dict['image'] = data_dict['image'][:, :, :3]
 
 #-------------------------------------------------------------------
 # Get data from Lidar
@@ -106,73 +103,6 @@ def lidar_callback(point_cloud, point_list):
     point_list.points = o3d.utility.Vector3dVector(points)
     point_list.colors = o3d.utility.Vector3dVector(int_color)
 
-
-#-------------------------------------------------------------
-# Func object detection
-def object_detection():
-    # Start sensor
-    cam_sensor.listen(lambda image: camera_callback(image, camera_data))
-
-    # OpenCV named window for rendering
-    cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
-    cv2.imshow('RGB Camera', camera_data['image'][:, :, :3])
-    cv2.waitKey(1)
-    while True:
-        world.tick()
-        # cv2.namedWindow('RGB Camera', cv2.WINDOW_AUTOSIZE)
-        # cv2.imshow('RGB Camera', camera_data['image'][:, :, :3])
-        frame = camera_data['image'][:, :, :3]
-        start_time = time.time()
-        boxes, classes, labels = predict(frame, model, device, 0.9)
-        # # get predictions for the current frame  
-        # # draw boxes
-        frame = draw_boxes(boxes, classes, labels, frame)
-        fps = 1/(time.time() - start_time)
-        # write the FPS on the current frame
-        cv2.putText(frame, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-		#convert from BGR to RGB color format
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        cv2.imshow('RGB Camera', frame)
-		# press `q` to exit
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    #--------------------------------------------------------------------------
-    # Close displayws and stop sensors
-    cv2.destroyAllWindows()
-    sys.exit()
-
-def lidar_pointcloud():
-    # Start sensor
-    point_list = o3d.geometry.PointCloud()
-    lidar_sensor.listen(lambda data: lidar_callback(data, point_list))
-    # Open3D visualiser for LIDAR
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(
-        window_name='Carla Lidar',
-        width=480,
-        height=270,
-        left=240,
-        top=135)
-    vis.get_render_option().background_color = [0.05, 0.05, 0.05]
-    vis.get_render_option().point_size = 1
-    vis.get_render_option().show_coordinate_frame = True
-    add_open3d_axis(vis)
-    frame = 0
-
-    while True:
-        if frame == 2:
-            vis.add_geometry(point_list)
-        vis.update_geometry(point_list)
-
-        vis.poll_events()
-        vis.update_renderer()
-        # # This can fix Open3D jittering issues:
-        time.sleep(0.005)
-        world.tick()
-        frame += 1
-        if keyboard.is_pressed("q"):
-            vis.destroy_window()
-            sys.exit()
 if __name__ == "__main__":
         
         #----------------------------------------------------------------------------------------------------------
@@ -240,7 +170,6 @@ if __name__ == "__main__":
         # Set Camera Attribute
         cam_bp.set_attribute("image_size_x",f"{IM_WIDTH}")
         cam_bp.set_attribute("image_size_y",f"{IM_HEIGHT}")
-        cam_bp.set_attribute("sensor_tick", str(1.0 / SENSOR_FPS))
         camera_data = {'image': np.zeros((IM_HEIGHT, IM_WIDTH, 4))}
 
         # Set Lidar Attribute
@@ -255,6 +184,20 @@ if __name__ == "__main__":
         lidar_bp.set_attribute('dropoff_general_rate', '0.0')
         lidar_bp.set_attribute('dropoff_intensity_limit', '1.0')
         lidar_bp.set_attribute('dropoff_zero_intensity', '0.0')
+        point_list = o3d.geometry.PointCloud()
+
+        # # Open3D visualiser for LIDAR and RADAR
+        # vis = o3d.visualization.Visualizer()
+        # vis.create_window(
+        #     window_name='Carla Lidar',
+        #     width=480,
+        #     height=270,
+        #     left=240,
+        #     top=135)
+        # vis.get_render_option().background_color = [0.05, 0.05, 0.05]
+        # vis.get_render_option().point_size = 1
+        # vis.get_render_option().show_coordinate_frame = True
+        # add_open3d_axis(vis)
         
         #---------------------------------------------------------------------------
         # Spawn actor
@@ -279,6 +222,10 @@ if __name__ == "__main__":
         spawn_lidar_point = carla.Transform(carla.Location(z=2.5))
         lidar_sensor = world.spawn_actor(lidar_bp, spawn_lidar_point, attach_to=vehicle)
 
+        # Start sensors
+        cam_sensor.listen(lambda image: camera_callback(image, camera_data))
+        # lidar_sensor.listen(lambda data: lidar_callback(data, point_list))
+
 
         #----------------------------------------------------------------------------
         # Setting for Traffic manager 
@@ -286,33 +233,56 @@ if __name__ == "__main__":
         traffic_manager.set_path(vehicle, route_1)
         
         # Set maximum speed 
-        traffic_manager.global_percentage_speed_difference(60)
+        traffic_manager.global_percentage_speed_difference(20)
 
         # Ignore_Lights
         traffic_manager.ignore_lights_percentage(vehicle, 100)
 
 
+
         #----------------------------------------------------------------------------------------------------------
-        # *******CONTROL START HERE******
-
-        object_detection_thread = threading.Thread(target=object_detection)
-        object_detection_thread.start()
-
-        #lidar_thread = threading.Thread(target=lidar_pointcloud)
-        #lidar_thread.start()
-
         # Set Angle and Speed for car
         manual_mode = False
         auto_mode = False
         count = 100
+
+        frame = 0
+        # *******CONTROL******
         # In synchronous mode, we need to run the simulation to fly the spectator
         while True:
-
+                
             #set viewpoint at main actor
             transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
             spectator.set_transform(transform)
+
+            # if frame == 2:
+            #     vis.add_geometry(point_list)
+            #     auto_mode = True
+            # vis.update_geometry(point_list)
+
+            # vis.poll_events()
+            # vis.update_renderer()
+            # # # This can fix Open3D jittering issues:
+            # time.sleep(0.005)
+
             world.tick()
             
+            image = camera_data['image']
+            # start_time = time.time()
+            boxes, classes, labels = predict(image, model, device, 0.9)
+            # # get predictions for the current frame  
+            # # draw boxes
+            image = draw_boxes(boxes, classes, labels, image)
+            # fps = 1/(time.time() - start_time)
+            # # write the FPS on the current frame
+            # cv2.putText(image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # # convert from BGR to RGB color format
+            # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            cv2.imshow('RGB Camera', image)
+            # # Break if user presses 'q'
+            if cv2.waitKey(1) == ord('q'):
+                break
+
             if (manual_mode and count != 0):
                 print("tick: ", count, "speed: ", vehicle.get_acceleration())
                 if (count >= 41):
@@ -329,29 +299,15 @@ if __name__ == "__main__":
                 vehicle.apply_control(carla.VehicleControl(throttle=0, steer=0))
                 vehicle.set_autopilot(auto_mode) # Give TM control over vehicle
 
-            if keyboard.is_pressed('q'):
-                lidar_sensor.stop()
-                lidar_sensor.destroy()
-                cam_sensor.stop()
-                cam_sensor.destroy()
-                for actor in world.get_actors().filter('*vehicle*'):
-                    actor.destroy()
-                sys.exit()
-            # cv2.imshow('RGB Camera', camera_data['image'])
-            # # Break if user presses 'q'
-            # if cv2.waitKey(1) == ord('q'):
-            #     break
+            frame += 1
 
-        # #--------------------------------------------------------------------------
-        # # Close displayws and stop sensors
-        # cv2.destroyAllWindows()
-        # lidar_sensor.stop()
-        # lidar_sensor.destroy()
-        # cam_sensor.stop()
-        # cam_sensor.destroy()
+        #--------------------------------------------------------------------------
+        # Close displayws and stop sensors
+        cv2.destroyAllWindows()
+        lidar_sensor.stop()
+        lidar_sensor.destroy()
+        cam_sensor.stop()
+        cam_sensor.destroy()
         # vis.destroy_window()
-        # for actor in world.get_actors().filter('*vehicle*'):
-        #     actor.destroy()
-
-        # *******CONTROL END HERE******
-        #----------------------------------------------------------------------------
+        for actor in world.get_actors().filter('*vehicle*'):
+            actor.destroy()
