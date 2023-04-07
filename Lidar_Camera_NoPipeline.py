@@ -108,8 +108,10 @@ if __name__ == "__main__":
         #----------------------------------------------------------------------------------------------------------
         # SET UP CONNECTION 
         # Connect to the client and retrieve the world object
-        client = carla.Client('192.168.1.9', 2000)
+        #client = carla.Client('192.168.1.9', 2000)
         #client = carla.Client('26.146.230.217', 2000)
+        client = carla.Client('192.168.108.181', 2000)
+        
         client.set_timeout(2.0)
         world = client.get_world()
 
