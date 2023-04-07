@@ -21,9 +21,6 @@ SENSOR_FPS=15 # sensor tick rate
 # Define model
 device = torch.device('cuda')
 model = Model3(device)
-model = model.half()
-model = model.to(device)
-
 
 #------------------------------------------------------------
 IM_HEIGHT = 320
@@ -281,7 +278,8 @@ if __name__ == "__main__":
             # # get predictions for the current frame  
             # # draw boxes
             # image = draw_boxes(boxes, classes, labels, camera_data['image'])
-            # fps = 1/(time.time() - start_time)
+            fps = 1/(time.time() - start_time)
+            print(fps)
             # # write the FPS on the current frame
             # cv2.putText(image, f"{fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             # # convert from BGR to RGB color format

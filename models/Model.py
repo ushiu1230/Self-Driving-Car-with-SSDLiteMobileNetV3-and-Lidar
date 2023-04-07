@@ -150,7 +150,7 @@ def Model4(device):
   model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
   checkpoint = torch.load("models/M4.pth", map_location = device)
   model.load_state_dict(checkpoint['model'])
-  model.eval()
+  model.eval().to(device)
   return model
 
 def Model3(device):
@@ -165,7 +165,8 @@ def Model3(device):
   model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 8, norm_layer)
   checkpoint = torch.load("models/700.pth", map_location = device)
   model.load_state_dict(checkpoint['model'])
-  model.eval()
+  model.half()
+  model.eval().to(device)
   return model
 
 def Model1(device):
@@ -176,10 +177,10 @@ def Model1(device):
     model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
     checkpoint = torch.load("models/M1.pth", map_location = device)
     model.load_state_dict(checkpoint['model'])    
-    model.eval()
+    model.eval().to(device)
     return model
 
 def Model0(device):
     model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights= SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
-    model.eval()
+    model.eval().to(device)
     return model
