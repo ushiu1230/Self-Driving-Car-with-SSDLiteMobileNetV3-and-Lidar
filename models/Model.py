@@ -165,7 +165,7 @@ def Model3(device):
   model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 8, norm_layer)
   checkpoint = torch.load("models/700.pth", map_location = device)
   model.load_state_dict(checkpoint['model'])
-  model.half()
+  # model.half()
   model.eval().to(device)
   return model
 

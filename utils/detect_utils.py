@@ -18,7 +18,7 @@ def predict(image, model, device, detection_threshold):
     """
     # transform the image to tensor
     image = transform(image)
-    image = image.half()
+    #image = image.half()
     image = image.to(device)
     # add a batch dimension
     image = image.unsqueeze(0) 
@@ -40,8 +40,6 @@ def draw_boxes(boxes, classes, labels, image):
     """
     Draws the bounding box around a detected object.
     """
-    print(image.dtype)
-    image = image.astype(np.uint8)
     image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2RGB)
     for i, box in enumerate(boxes):
         color = COLORS[labels[i]]

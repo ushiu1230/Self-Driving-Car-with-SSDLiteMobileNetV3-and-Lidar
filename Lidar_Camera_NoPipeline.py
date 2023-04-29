@@ -1,3 +1,16 @@
+import glob
+import os
+import sys
+
+try:
+    sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
+        sys.version_info.major,
+        sys.version_info.minor,
+        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
+except IndexError:
+    pass
+
+
 import carla 
 import math
 import random
@@ -9,13 +22,12 @@ import open3d as o3d
 import torch
 from matplotlib import cm
 
-
 from utils.coco_names import coco_names
 from models.Model import *
 from utils.detect_utils import *
 
 GLOBAL_FPS=60 # world tick rate
-SENSOR_FPS=15 # sensor tick rate
+SENSOR_FPS=20 # sensor tick rate
 
 #------------------------------------------------------------
 # Define model
@@ -105,26 +117,26 @@ if __name__ == "__main__":
         #----------------------------------------------------------------------------------------------------------
         # SET UP CONNECTION 
         # Connect to the client and retrieve the world object
-        #client = carla.Client('192.168.1.9', 2000)
+        client = carla.Client('192.168.1.9', 2000)
         #client = carla.Client('26.146.230.217', 2000)
-        client = carla.Client('192.168.108.181', 2000)
+        #client = carla.Client('192.168.108.181', 2000)
         
         client.set_timeout(2.0)
         world = client.get_world()
 
-        # Set up the simulator in synchronous mode
-        settings = world.get_settings()
-        settings.synchronous_mode = True # Enables synchronous mode
-        settings.fixed_delta_seconds = 1 / GLOBAL_FPS
-        world.apply_settings(settings)
+        # # Set up the simulator in synchronous mode
+        # settings = world.get_settings()
+        # settings.synchronous_mode = True # Enables synchronous mode
+        # settings.fixed_delta_seconds = 1 / GLOBAL_FPS
+        # world.apply_settings(settings)
 
-        # Set up the TM in synchronous mode
+        # # Set up the TM in synchronous mode
         traffic_manager = client.get_trafficmanager()
-        traffic_manager.set_synchronous_mode(True)
+        # traffic_manager.set_synchronous_mode(True)
 
-        # Set a seed so behaviour can be repeated if necessary
-        traffic_manager.set_random_device_seed(0)
-        random.seed(0)
+        # # Set a seed so behaviour can be repeated if necessary
+        # traffic_manager.set_random_device_seed(0)
+        # random.seed(0)
 
         #----------------------------------------------------------------------------------------------------------
         # GET SOME SPAWN POINT ON MAP AND DEFINE THE AUTOPILOT ROUTE
@@ -147,7 +159,7 @@ if __name__ == "__main__":
             route_1.append(spawn_points[ind].location)
 
         # Now let's print them in the map so we can see our routes
-        world.debug.draw_string(spawn_point_1.location, 'Spawn point 1', life_time=30, color=carla.Color(255,0,0))
+        # world.debug.draw_string(spawn_point_1.location, 'Spawn point 1', life_time=30, color=carla.Color(255,0,0))
             
         # for ind in route_1_indices:
         #     spawn_points[ind].location
@@ -177,8 +189,8 @@ if __name__ == "__main__":
         lidar_bp.set_attribute('lower_fov', '-30.0')
         #lidar_bp.set_attribute('horizontal_fov', '30')
         lidar_bp.set_attribute('channels', '64.0')
-        lidar_bp.set_attribute("sensor_tick", str(1.0 / SENSOR_FPS))
-        lidar_bp.set_attribute('rotation_frequency', str(GLOBAL_FPS))
+        # lidar_bp.set_attribute("sensor_tick", str(1.0 / SENSOR_FPS))
+        # lidar_bp.set_attribute('rotation_frequency', str(GLOBAL_FPS))
         lidar_bp.set_attribute('points_per_second', '500000')
         lidar_bp.set_attribute('dropoff_general_rate', '0.0')
         lidar_bp.set_attribute('dropoff_intensity_limit', '1.0')
@@ -254,11 +266,7 @@ if __name__ == "__main__":
 
         # In synchronous mode, we need to run the simulation to fly the spectator
         while True:
-                
-            #set viewpoint at main actor
-            transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
-            spectator.set_transform(transform)
-
+            
             if frame == 2:
                 vis.add_geometry(point_list)
                 auto_mode = True
@@ -268,8 +276,9 @@ if __name__ == "__main__":
             vis.update_renderer()
             # This can fix Open3D jittering issues:
             time.sleep(0.005)
-
-            world.tick()
+            
+            world.wait_for_tick()
+            # world.tick()
             
             image = camera_data['image'][:, :, :3]
             start_time = time.time()
