@@ -47,6 +47,10 @@ image_queue = queue.Queue(maxsize=1)
 lidar_queue = queue.Queue(maxsize=1)
 Lidar_result_queue = queue.Queue(maxsize=1)
 Camera_result_queue = queue.Queue(maxsize=1)
+
+# Global variables
+Start_Sig = False
+
 #------------------------------------------------------------
 # Define model
 device = torch.device('cuda')
@@ -120,22 +124,43 @@ class LidarProcessorThread(threading.Thread):
             Lidar_result_queue.put(result)
             self.lidar_queue.task_done()
 
-class FiniteStateMachine(threading.Thread):
+class StateMachine(threading.Thread):
     def __init__(self, Lidar_result_queue, vehicle, tm):
-        super(FiniteStateMachine, self).__init__()
+        super(StateMachine, self).__init__()
+        self.current_state = "Start"
         self.Lidar_result_queue = Lidar_result_queue
         self.vehicle = vehicle
         self.tm = tm
+        self.control = carla.VehicleControl()
 
-    def run(self):
+    def transition(self):
+        Lidar = self.Lidar_result_queue.get()
+
+        if self.current_state == "Normal":
+            self.vehicle.set_autopilot(True)
+            self.tm.global_percentage_speed_difference(50)
+            if Lidar[0] < 4.5 and Lidar[1][0] < 0 and (Lidar[1][1] <= 1 and Lidar[1][1] >= -1):
+                self.tm.global_percentage_speed_difference(90)
+                self.current_state = "Stop"
+
+        elif self.current_state == "Stop":
+            self.vehicle.set_autopilot(False)
+            self.control.brake = 1.0
+            self.control.throttle = 0.0
+            self.control.steer = 0.0
+            self.vehicle.apply_control(self.control)
+            if Lidar[0] > 4.5 and Lidar[1][0] < 0 and (Lidar[1][1] <= 1 and Lidar[1][1] >= -1):
+                self.current_state = "Normal"
+            
+        print(f"State: {self.current_state}, Distance: {Lidar[0]}")
+        
+    def run(self): 
+        global Start_Sig
         while True:
-            result = self.Lidar_result_queue.get()
-            print(result)
-            if result[0] <= 10 and result[1][0] < 0 and (result[1][1] <= 1 or result[1][1] >= -1):
-                print("Obstacle found")
-                self.vehicle.set_autopilot(False)
-                self.vehicle.apply_control(carla.VehicleControl(throttle = 0, steer = 0, brake = 1))
-                self.Lidar_result_queue.task_done()
+            if self.current_state == "Start":
+                if Start_Sig:
+                    self.current_state = "Normal"
+            self.transition()
 
 
 
@@ -388,13 +413,13 @@ def run_simulation(args, client):
         traffic_manager.set_path(Moving_car1, route_2)
 
         # Set maximum speed 
-        traffic_manager.set_desired_speed(vehicle,30)
+        traffic_manager.global_percentage_speed_difference(50)
 
         # Ignore_Lights
         # for car in vehicle_list:
         #     print(car)
         traffic_manager.ignore_lights_percentage(vehicle, 100)
-        traffic_manager.ignore_vehicles_percentage(vehicle, 100)
+        #traffic_manager.ignore_vehicles_percentage(vehicle, 100)
 
 
         # Display Manager organize all the sensors an its display in a window
@@ -405,8 +430,8 @@ def run_simulation(args, client):
         # and assign each of them to a grid position, 
         SensorManager(world, image_queue, display_manager, 'RGBCamera', carla.Transform(carla.Location(x=1, z=1.5)), 
                       vehicle, {}, display_pos=[0, 0])
-        SensorManager(world, lidar_queue, display_manager, 'LiDAR', carla.Transform(carla.Location(x=0, z=2.5)), 
-                      vehicle, {'channels' : '64', 'range' : '100', 'upper_fov': '0.0', 'lower_fov': '-10.0',  'points_per_second': '250000', 'rotation_frequency': '20'}, display_pos=[0, 2])
+        SensorManager(world, lidar_queue, display_manager, 'LiDAR', carla.Transform(carla.Location(x=0, z=2.6)), 
+                      vehicle, {'channels' : '64', 'range' : '100', 'upper_fov': '0.0', 'lower_fov': '-20.0',  'points_per_second': '200000', 'rotation_frequency': '20'}, display_pos=[0, 2])
 
         #Simulation loop
         call_exit = False
@@ -417,7 +442,7 @@ def run_simulation(args, client):
         # Create a new thread to process the image
         image_processor_thread = ImageProcessorThread(image_queue, display_manager, display_pos=[0, 1])
         lidar_processor_thread = LidarProcessorThread(lidar_queue, Lidar_result_queue)
-        Car_Control = FiniteStateMachine(Lidar_result_queue, vehicle, traffic_manager)
+        Car_Control = StateMachine(Lidar_result_queue, vehicle, traffic_manager)
 
         # Start the threads
         image_processor_thread.start()
@@ -427,20 +452,20 @@ def run_simulation(args, client):
         # Wait for the queue to be empty before continuing with the main thread
         image_queue.join()
         lidar_queue.join()
+        Lidar_result_queue.join()
+        
         print("Threads are running:", threading.active_count())
 
         
         while True:
+            global Start_Sig
+
+
             # Carla Tickpyth
             if args.sync:
                 world.tick()
             else:
                 world.wait_for_tick()
-
-            #print(vehicle.get_location())
-
-            # print data to terminal
-            # print(my_list)
 
             # Render received data
             display_manager.render()
@@ -453,8 +478,8 @@ def run_simulation(args, client):
                         call_exit = True
                         break
                     if event.key == K_e:
-                        vehicle.set_autopilot(True)
-              
+                        Start_Sig = True
+            
             if call_exit:
                 break
         
