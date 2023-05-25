@@ -19,7 +19,6 @@ from torchvision.models import mobilenet
 from torch import nn, Tensor
 from torchvision.utils import _log_api_usage_once
 
-
 def _extra_block(in_channels: int, out_channels: int, norm_layer: Callable[..., nn.Module]) -> nn.Sequential:
     activation = nn.ReLU6
     intermediate_channels = out_channels // 2
@@ -138,44 +137,58 @@ backbone = mobilenet_v3_large(weights=weights_backbone, progress=progress, norm_
 _normal_init(backbone)
 backbone = _mobilenet_extractor(backbone, trainable_backbone_layers, norm_layer)
 
+def Model6(device):
+    model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights= SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
+    model.backbone = backbone
+    in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
+    model.anchor_generator = DefaultBoxGenerator(aspect_ratios = [[1.0, 2.0],[1.0, 2.0],[1.0, 2.0],[1.0, 2.0]])
+    num_anchors = model.anchor_generator.num_anchors_per_location()
+    norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
+    model.head.regression_head = SSDLiteRegressionHead(in_channels, num_anchors, norm_layer)
+    model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 3, norm_layer)
+    checkpoint = torch.load("models/M6.pth", map_location = device)
+    model.load_state_dict(checkpoint['model'])
+    model.eval().to(device)
+    return model
+
 def Model4(device):
-  model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights= SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
-  model.backbone = backbone
-  in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
-  model.anchor_generator = DefaultBoxGenerator([[1.5],[2,3],[2,3],[2]], min_ratio=0.2, max_ratio=0.9)
-  num_anchors = model.anchor_generator.num_anchors_per_location()
-  aspect_ratios = model.anchor_generator.aspect_ratios
-  norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
-  model.head.regression_head = SSDLiteRegressionHead(in_channels, num_anchors, norm_layer)
-  model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
-  checkpoint = torch.load("models/M4.pth", map_location = device)
-  model.load_state_dict(checkpoint['model'])
-  model.eval().to(device)
-  return model
+    model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights= SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
+    model.backbone = backbone
+    in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
+    model.anchor_generator = DefaultBoxGenerator([[1.5],[2,3],[2,3],[2]], min_ratio=0.2, max_ratio=0.9)
+    num_anchors = model.anchor_generator.num_anchors_per_location()
+    aspect_ratios = model.anchor_generator.aspect_ratios
+    norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
+    model.head.regression_head = SSDLiteRegressionHead(in_channels, num_anchors, norm_layer)
+    model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
+    checkpoint = torch.load("models/M4.pth", map_location = device)
+    model.load_state_dict(checkpoint['model'])
+    model.eval().to(device)
+    return model
 
 def Model3(device):
-  model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights= SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
-  model.backbone = backbone
-  in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
-  model.anchor_generator = DefaultBoxGenerator([[1.5],[2,3],[2,3],[2]], min_ratio=0.2, max_ratio=0.9)
-  num_anchors = model.anchor_generator.num_anchors_per_location()
-  aspect_ratios = model.anchor_generator.aspect_ratios
-  norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
-  model.head.regression_head = SSDLiteRegressionHead(in_channels, num_anchors, norm_layer)
-  model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 8, norm_layer)
-  checkpoint = torch.load("models/700.pth", map_location = device)
-  model.load_state_dict(checkpoint['model'])
-  # model.half()
-  model.eval().to(device)
-  return model
+    model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights= SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
+    model.backbone = backbone
+    in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
+    model.anchor_generator = DefaultBoxGenerator([[1.5],[2,3],[2,3],[2]], min_ratio=0.2, max_ratio=0.9)
+    num_anchors = model.anchor_generator.num_anchors_per_location()
+    aspect_ratios = model.anchor_generator.aspect_ratios
+    norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
+    model.head.regression_head = SSDLiteRegressionHead(in_channels, num_anchors, norm_layer)
+    model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 8, norm_layer)
+    checkpoint = torch.load("models/700.pth", map_location = device)
+    model.load_state_dict(checkpoint['model'])
+    # model.half()
+    model.eval().to(device)
+    return model
 
 def Model1(device):
     model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights = SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
     in_channels = det_utils.retrieve_out_channels(model.backbone, (320, 320))
     num_anchors = model.anchor_generator.num_anchors_per_location()
     norm_layer  = partial(nn.BatchNorm2d, eps=0.001, momentum=0.03)
-    model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 2, norm_layer)
-    checkpoint = torch.load("models/M1.pth", map_location = device)
+    model.head.classification_head = SSDLiteClassificationHead(in_channels, num_anchors, 3, norm_layer)
+    checkpoint = torch.load("models\BL3_SSDLiteMBv3_700.pth", map_location = device)
     model.load_state_dict(checkpoint['model'])    
     model.eval().to(device)
     return model

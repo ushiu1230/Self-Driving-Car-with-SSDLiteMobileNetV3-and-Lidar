@@ -35,7 +35,6 @@ import cv2
 import torch
 import queue
 import threading
-import keyboard
 
 from utils.coco_names import coco_names
 from models.Model import *
@@ -54,7 +53,7 @@ Start_Sig = False
 #------------------------------------------------------------
 # Define model
 device = torch.device('cuda')
-model = Model3(device)
+model = Model1(device)
 
 running = True
 
@@ -419,8 +418,7 @@ def run_simulation(args, client):
         # for car in vehicle_list:
         #     print(car)
         traffic_manager.ignore_lights_percentage(vehicle, 100)
-        #traffic_manager.ignore_vehicles_percentage(vehicle, 100)
-
+        traffic_manager.ignore_vehicles_percentage(vehicle, 100)
 
         # Display Manager organize all the sensors an its display in a window
         # If can easily configure the grid and the total window size
