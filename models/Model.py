@@ -191,7 +191,7 @@ def Model1(device):
     checkpoint = torch.load("models\BL3_SSDLiteMBv3_700.pth", map_location = device)
     model.load_state_dict(checkpoint['model'])    
     model.eval().to(device)
-    return model
+    return model 
 
 def Model0(device):
     model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights= SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)

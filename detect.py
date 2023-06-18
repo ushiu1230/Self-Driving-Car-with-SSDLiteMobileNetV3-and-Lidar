@@ -9,9 +9,8 @@ import cv2
 
 # define the computation device
 # select device (whether GPU or CPU)
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+device = torch.device('cuda')
 model = Model1(device)
-model.to(device)
 
 cap = cv2.VideoCapture(0)
 if (cap.isOpened() == False):

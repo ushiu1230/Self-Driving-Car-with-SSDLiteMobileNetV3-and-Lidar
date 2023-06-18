@@ -26,6 +26,7 @@ try:
 except IndexError:
     pass
 
+import math
 import carla
 import argparse
 import random
@@ -49,13 +50,12 @@ Camera_result_queue = queue.Queue(maxsize=1)
 
 # Global variables
 Start_Sig = False
+is_obstacle_found = False
 
 #------------------------------------------------------------
 # Define model
 device = torch.device('cuda')
 model = Model1(device)
-
-running = True
 
 try:
     import pygame
@@ -66,8 +66,15 @@ except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
 def detect_objects(image):
+    global is_obstacle_found
     start_time = time.time()
     boxes, classes, labels = predict(image, model, device, 0.9)
+
+    for box, pred_class, label in zip(boxes, classes, labels):
+        if box is not None:
+            is_obstacle_found = True
+        else:
+            is_obstacle_found = False
     # get predictions for the current frame  
     # draw boxes
     frame = draw_boxes(boxes, classes, labels, image)
@@ -87,9 +94,11 @@ class ImageProcessorThread(threading.Thread):
         self.surface = None
 
     def run(self):
+        global is_obstacle_found
         while True:
             image = self.image_queue.get()
             image = detect_objects(image)
+
             self.surface = pygame.surfarray.make_surface(image.swapaxes(0, 1))
             if self.surface is not None:
                 offset = self.display_man.get_display_offset(self.display_pos)
@@ -130,28 +139,52 @@ class StateMachine(threading.Thread):
         self.Lidar_result_queue = Lidar_result_queue
         self.vehicle = vehicle
         self.tm = tm
-        self.control = carla.VehicleControl()
 
     def transition(self):
+        global is_obstacle_found
+
         Lidar = self.Lidar_result_queue.get()
 
         if self.current_state == "Normal":
+            # precondition
             self.vehicle.set_autopilot(True)
-            self.tm.global_percentage_speed_difference(50)
-            if Lidar[0] < 4.5 and Lidar[1][0] < 0 and (Lidar[1][1] <= 1 and Lidar[1][1] >= -1):
-                self.tm.global_percentage_speed_difference(90)
-                self.current_state = "Stop"
+            if is_obstacle_found:
+                if (9 < Lidar[0] <= 15) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
+                    self.current_state = "Slow Down" 
+                if (0 < Lidar[0] <= 5) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
+                    self.current_state = "Stop" 
 
         elif self.current_state == "Stop":
+            # precondition
             self.vehicle.set_autopilot(False)
-            self.control.brake = 1.0
-            self.control.throttle = 0.0
-            self.control.steer = 0.0
-            self.vehicle.apply_control(self.control)
-            if Lidar[0] > 4.5 and Lidar[1][0] < 0 and (Lidar[1][1] <= 1 and Lidar[1][1] >= -1):
-                self.current_state = "Normal"
-            
-        print(f"State: {self.current_state}, Distance: {Lidar[0]}")
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0, brake=1))
+        
+        elif self.current_state == "Slow Down":
+            # precondition 
+            self.vehicle.set_autopilot(False)
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0, brake=0.2))
+            if is_obstacle_found:
+                if (0 < Lidar[0] <= 5) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
+                    self.current_state = "Stop" 
+
+                elif (5 < Lidar[0] <= 7) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
+                    self.current_state = "Avoid to left"
+
+        elif self.current_state == "Avoid to left":
+            # precondition
+            self.vehicle.set_autopilot(False)
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.4, steer=-0.4, brake=0.0))
+            if not is_obstacle_found:
+                if (0 < Lidar[0] <= 5) and (4 < Lidar[1][1] < 0) and (-0.5 <= Lidar[1][1] <= 0.5):
+                    self.vehicle.set_autopilot(True)
+        # Get the vehicle's velocity
+        vehicle_velocity = self.vehicle.get_velocity()
+
+        # Compute the vehicle speed
+        speed = 3.6 * (vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)**0.5
+
+        print(f"State: {self.current_state}, Distance: {Lidar[0]}, Speed: {speed}")
+
         
     def run(self): 
         global Start_Sig
@@ -241,14 +274,13 @@ class SensorManager:
             for key in sensor_options:
                 camera_bp.set_attribute(key, sensor_options[key])
 
-            camera = self.world.spawn_actor(camera_bp, transform, attach_to=attached)
+            camera = self.world.spawn_actor(camera_bp, transform, attach_to=attached, attachment_type = carla.AttachmentType.Rigid)
             camera.listen(self.save_rgb_image)
 
             return camera
 
         elif sensor_type == 'LiDAR':
             lidar_bp = self.world.get_blueprint_library().find('sensor.lidar.ray_cast')
-            lidar_bp.set_attribute('range', '100')
             lidar_bp.set_attribute('dropoff_general_rate', lidar_bp.get_attribute('dropoff_general_rate').recommended_values[0])
             lidar_bp.set_attribute('dropoff_intensity_limit', lidar_bp.get_attribute('dropoff_intensity_limit').recommended_values[0])
             lidar_bp.set_attribute('dropoff_zero_intensity', lidar_bp.get_attribute('dropoff_zero_intensity').recommended_values[0])
@@ -295,7 +327,6 @@ class SensorManager:
         lidar_data = np.array(points[:, :2])
 
         self.queue.put(np.copy(lidar_data))
-
         lidar_data *= min(disp_size) / lidar_range
         lidar_data += (0.5 * disp_size[0], 0.5 * disp_size[1])
         lidar_data = np.fabs(lidar_data)  # pylint: disable=E1111
@@ -375,7 +406,7 @@ def run_simulation(args, client):
             settings = world.get_settings()
             traffic_manager.set_synchronous_mode(True)
             settings.synchronous_mode = True
-            settings.fixed_delta_seconds = 0.05
+            settings.fixed_delta_seconds = 0.01
             world.apply_settings(settings)
 
         #---------------------------------------------------------------------------
@@ -411,9 +442,6 @@ def run_simulation(args, client):
         traffic_manager.set_path(vehicle, route_1)
         traffic_manager.set_path(Moving_car1, route_2)
 
-        # Set maximum speed 
-        traffic_manager.global_percentage_speed_difference(50)
-
         # Ignore_Lights
         # for car in vehicle_list:
         #     print(car)
@@ -428,8 +456,8 @@ def run_simulation(args, client):
         # and assign each of them to a grid position, 
         SensorManager(world, image_queue, display_manager, 'RGBCamera', carla.Transform(carla.Location(x=1, z=1.5)), 
                       vehicle, {}, display_pos=[0, 0])
-        SensorManager(world, lidar_queue, display_manager, 'LiDAR', carla.Transform(carla.Location(x=0, z=2.6)), 
-                      vehicle, {'channels' : '64', 'range' : '100', 'upper_fov': '0.0', 'lower_fov': '-20.0',  'points_per_second': '200000', 'rotation_frequency': '20'}, display_pos=[0, 2])
+        SensorManager(world, lidar_queue, display_manager, 'LiDAR', carla.Transform(carla.Location(x=0, z=2)), 
+                      vehicle, {'channels' : '64', 'range' : '80', 'upper_fov': '0', 'lower_fov': '-8',  'points_per_second': '200000', 'rotation_frequency': '20'}, display_pos=[0, 2])
 
         #Simulation loop
         call_exit = False
@@ -496,7 +524,7 @@ def main():
     argparser.add_argument(
         '--host',
         metavar='H',
-        default='192.168.1.10',
+        default='127.0.0.1',
         help='IP of the host server (default: 127.0.0.1)')
     argparser.add_argument(
         '-p', '--port',
