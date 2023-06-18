@@ -144,14 +144,16 @@ class StateMachine(threading.Thread):
         global is_obstacle_found
 
         Lidar = self.Lidar_result_queue.get()
-
+        distance = Lidar[0]
+        x =  Lidar[1][0]
+        y = Lidar[1][1]
         if self.current_state == "Normal":
             # precondition
             self.vehicle.set_autopilot(True)
             if is_obstacle_found:
-                if (9 < Lidar[0] <= 15) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
+                if (9 < distance <= 12) and x < 0 and (-0.5 <= y <= 0.5):
                     self.current_state = "Slow Down" 
-                if (0 < Lidar[0] <= 5) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
+                if (0 < distance <= 5) and x < 0 and (-0.5 <= y <= 0.5):
                     self.current_state = "Stop" 
 
         elif self.current_state == "Stop":
@@ -161,29 +163,29 @@ class StateMachine(threading.Thread):
         
         elif self.current_state == "Slow Down":
             # precondition 
-            self.vehicle.set_autopilot(False)
-            self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0, brake=0.2))
+            self.vehicle.set_autopilot(True)
+            self.tm.global_percentage_speed_difference(50) 
             if is_obstacle_found:
-                if (0 < Lidar[0] <= 5) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
+                if (0 < distance <= 5) and x < 0 and (-0.5 <= y <= 0.5):
                     self.current_state = "Stop" 
 
-                elif (5 < Lidar[0] <= 7) and Lidar[1][0] < 0 and (-0.5 <= Lidar[1][1] <= 0.5):
-                    self.current_state = "Avoid to left"
+                elif (6 < distance <= 8) and x < 0 and (-0.5 <= y <= 0.5):
+                    self.current_state = "Avoid"
 
-        elif self.current_state == "Avoid to left":
+        elif self.current_state == "Avoid":
             # precondition
             self.vehicle.set_autopilot(False)
-            self.vehicle.apply_control(carla.VehicleControl(throttle=0.4, steer=-0.4, brake=0.0))
-            if not is_obstacle_found:
-                if (0 < Lidar[0] <= 5) and (4 < Lidar[1][1] < 0) and (-0.5 <= Lidar[1][1] <= 0.5):
-                    self.vehicle.set_autopilot(True)
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.2, steer=-0.5, brake=0.0))
+                
+
+        
         # Get the vehicle's velocity
         vehicle_velocity = self.vehicle.get_velocity()
 
         # Compute the vehicle speed
         speed = 3.6 * (vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)**0.5
 
-        print(f"State: {self.current_state}, Distance: {Lidar[0]}, Speed: {speed}")
+        print(f"State: {self.current_state}, Distance: {(distance, x, y)}, Speed: {speed}")
 
         
     def run(self): 
@@ -457,7 +459,7 @@ def run_simulation(args, client):
         SensorManager(world, image_queue, display_manager, 'RGBCamera', carla.Transform(carla.Location(x=1, z=1.5)), 
                       vehicle, {}, display_pos=[0, 0])
         SensorManager(world, lidar_queue, display_manager, 'LiDAR', carla.Transform(carla.Location(x=0, z=2)), 
-                      vehicle, {'channels' : '64', 'range' : '80', 'upper_fov': '0', 'lower_fov': '-8',  'points_per_second': '200000', 'rotation_frequency': '20'}, display_pos=[0, 2])
+                      vehicle, {'channels' : '64', 'range' : '100', 'upper_fov': '0', 'lower_fov': '-8',  'points_per_second': '200000', 'rotation_frequency': '20'}, display_pos=[0, 2])
 
         #Simulation loop
         call_exit = False
