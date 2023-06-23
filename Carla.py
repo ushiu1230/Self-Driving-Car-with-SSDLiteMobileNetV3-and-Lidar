@@ -55,7 +55,7 @@ is_obstacle_found = False
 #------------------------------------------------------------
 # Define model
 device = torch.device('cuda')
-model = Model1(device)
+model = Model4(device)
 
 try:
     import pygame
@@ -136,58 +136,174 @@ class StateMachine(threading.Thread):
     def __init__(self, Lidar_result_queue, vehicle, tm):
         super(StateMachine, self).__init__()
         self.current_state = "Start"
+        self.previous_state = "Start"
         self.Lidar_result_queue = Lidar_result_queue
         self.vehicle = vehicle
         self.tm = tm
-        self.count = 0
+        self.count = 50
+
+    def brake_on_distance(self, distance, x_min, x_max, y_min, y_max):
+        return ((distance - x_min) / (x_max - x_min)) * (y_max - y_min) + y_min
 
     def transition(self):
         global is_obstacle_found
-
+            
         Lidar = self.Lidar_result_queue.get()
         distance = Lidar[0]
         x =  Lidar[1][0]
         y = Lidar[1][1]
+
         if self.current_state == "Normal":
             # precondition
-            self.vehicle.set_autopilot(True)
-            if is_obstacle_found:
-                if (9 < distance <= 12) and -10 < x < 0 and (-0.1 <= y <= 0.1):
-                    self.current_state = "Slow Down" 
-                if (0 < distance <= 5) and x < 0 and (-0.1 <= y <= 0.1):
-                    self.current_state = "Stop" 
+            if not self.previous_state == "Normal":
+                print("previous_state Change")
+                self.vehicle.set_autopilot(True)
+                self.tm.global_percentage_speed_difference(0)
 
-        elif self.current_state == "Stop":
-            # precondition
-            self.vehicle.set_autopilot(False)
-            self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0, brake=1))
-        
+            self.previous_state = self.current_state
+
+            if is_obstacle_found:
+                if (8 < distance <= 12) and -10 < x < 0 and (-0.2 <= y <= 0.2):
+                    self.tm.global_percentage_speed_difference(50)
+                    self.current_state = "Slow Down"
+
+                if (1 < distance <= 6) and x < 0 and (-0.2 <= y <= 0.2):
+                    self.tm.global_percentage_speed_difference(50)
+                    self.current_state = "Stop"
+
+            elif (1 < distance <= 6) and (-1 <= y <= 1):
+                self.current_state = "Stop"
+
         elif self.current_state == "Slow Down":
             # precondition 
-            self.vehicle.set_autopilot(False)
-            self.vehicle.apply_control(carla.VehicleControl(throttle=0.2, steer=0.0, brake=0.2))
+            if not self.previous_state == "Slow Down":
+                self.vehicle.set_autopilot(False)
+
+            self.previous_state = self.current_state
+
+            brake_offset = self.brake_on_distance(distance, 12, 8, 0.6, 0.8)
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.2, steer=0.0, brake=brake_offset))
+
             if is_obstacle_found:
-                if (0 < distance <= 7) and x < 0 and (-0.5 <= y <= 0.5):
+                if (1 < distance <= 6) and x < 0 and (-0.2 <= y <= 0.2):
                     self.current_state = "Stop" 
 
-                elif (7 < distance <= 9) and  -9 < x < 0 and (-0.1 <= y <= 0.1):
-                    self.current_state = "Avoid"
+                elif (6 < distance <= 8) and  -9 < x < 0 and (-0.2 <= y <= 0.2):
+                    self.current_state = "Pre: Change lane"
 
-        elif self.current_state == "Avoid":
+        elif self.current_state == "Pre: Change lane":
             # precondition
-            self.vehicle.set_autopilot(False)
-            self.vehicle.apply_control(carla.VehicleControl(throttle=0.2, steer=-0.5, brake=0.0))
-            print("count: ",self.count)
-            if self.count < 30: 
-                self.count = self.count + 1
-            else:
-                print("count: ", self.count) 
-            # if not is_obstacle_found and (distance > 2):
-                self.current_state = "Normal"
-                self.count = 0
+            if not self.previous_state == "Pre: Change lane":
+                self.vehicle.set_autopilot(False)
 
-                
- 
+            self.previous_state = self.current_state
+
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.35, steer=-0.6, brake=0))
+
+            #print("count: ",self.count)
+
+            if self.count != 0: 
+                self.count = self.count - 1
+
+            else:
+            # if not is_obstacle_found and (distance > 2):
+                self.count = 50
+                self.current_state = "Pre: Pre Steering"
+
+
+        elif self.current_state == "Pre: Pre Steering":
+            if not self.previous_state == "Pre: Pre Steering":
+                self.vehicle.set_autopilot(False)
+
+            self.previous_state = self.current_state
+
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.35, steer=0.6, brake=0))
+
+            #print("count: ",self.count)
+
+            if self.count != 0: 
+                self.count = self.count - 1
+
+            else:
+            # if not is_obstacle_found and (distance > 2):
+                self.count = 50
+                self.current_state = "Holding"
+
+        elif self.current_state == "Holding":
+            if not self.previous_state == "Holding":
+                self.vehicle.set_autopilot(True)
+
+            self.previous_state = self.current_state
+
+            #print("count: ",self.count)
+
+            if self.count != 0: 
+                self.count = self.count - 1
+
+            # if distance < 2 and y < 0 and x < 0:
+            #     print("Upper Right")
+            # elif distance < 2 and y < 0 and x > 0:
+            #     print("Lower Right")
+
+            else:
+                    #and (x > 0) and (-0.2 <= y <= 0.2) and not is_obstacle_found
+                    self.count = 50
+                    self.current_state = "Pos: Change back lane"
+
+        elif self.current_state == "Pos: Change back lane":
+            if not self.previous_state == "Pos: Change back lane":
+                print("previous_state Change")
+
+            self.vehicle.set_autopilot(False)
+
+            self.previous_state = self.current_state
+
+            self.vehicle.apply_control(carla.VehicleControl(throttle=1, steer=0.6, brake=0))
+
+            print("count: ",self.count)
+
+            if self.count != 0: 
+                self.count = self.count - 1
+
+            else:
+            # if not is_obstacle_found and (distance > 2):
+                self.count = 50
+                self.current_state = "Pos: Return Steering"
+
+
+        elif self.current_state == "Pos: Return Steering":
+            if not self.previous_state == "Pos: Return Steering":
+                print("previous_state Change")
+                self.vehicle.set_autopilot(False)
+
+            self.previous_state = self.current_state
+
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.35, steer=-0.6, brake=0))
+
+            #print("count: ",self.count)
+
+            if self.count != 0: 
+                self.count = self.count - 1
+
+            else:
+            # if not is_obstacle_found and (distance > 2):
+                self.count = 50
+                self.current_state = "Normal"
+
+
+
+        elif self.current_state == "Stop":
+            if not self.previous_state == "Stop":
+                self.vehicle.set_autopilot(False)
+
+            self.previous_state = self.current_state
+
+            brake_offset = self.brake_on_distance(distance, 6, 3, 0.8, 1)
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0, steer=0.0, brake=brake_offset))
+
+            if not is_obstacle_found:
+                if  6 < distance <= 9:
+                    self.current_state = "Slowdown"
         
         # Get the vehicle's velocity
         vehicle_velocity = self.vehicle.get_velocity()
@@ -195,7 +311,7 @@ class StateMachine(threading.Thread):
         # Compute the vehicle speed
         speed = 3.6 * (vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)**0.5
 
-        print(f"State: {self.current_state}, Distance: {(distance, x, y)}, Speed: {speed}")
+        print(f"State: {self.current_state}, Distance: {distance}, Speed: {speed}")
 
         
     def run(self): 
@@ -205,7 +321,6 @@ class StateMachine(threading.Thread):
                 if Start_Sig:
                     self.current_state = "Normal"
             self.transition()
-
 
 
 class CustomTimer:
@@ -280,8 +395,8 @@ class SensorManager:
         if sensor_type == 'RGBCamera':
             camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
             disp_size = self.display_man.get_display_size()
-            camera_bp.set_attribute('image_size_x', f"{320}")
-            camera_bp.set_attribute('image_size_y', f"{320}")
+            camera_bp.set_attribute('image_size_x', f"{256}")
+            camera_bp.set_attribute('image_size_y', f"{256}")
 
             for key in sensor_options:
                 camera_bp.set_attribute(key, sensor_options[key])
@@ -405,7 +520,7 @@ def run_simulation(args, client):
         for ind in route_2_indices:
             route_2.append(spawn_points[ind].location)
 
-        # Now let's print them in the map so we can see our routes
+        # # Now let's print them in the map so we can see our routes
         # world.debug.draw_string(spawn_point_1.location, 'Spawn point 1', life_time=30, color=carla.Color(255,0,0))
             
         # for ind in route_1_indices:
@@ -434,12 +549,12 @@ def run_simulation(args, client):
         vehicle = world.try_spawn_actor(vehicle_bp, spawn_point_1)
         Static_car1 = world.try_spawn_actor(npc_bp, spawn_point_2)
         Static_car2 = world.try_spawn_actor(npc_bp, spawn_point_3)
-        Moving_car1 = world.try_spawn_actor(npc_bp, spawn_point_4)
+        # Moving_car1 = world.try_spawn_actor(npc_bp, spawn_point_4)
         
         vehicle_list.append(vehicle)
         vehicle_list.append(Static_car1)
-        vehicle_list.append(Static_car2)
-        vehicle_list.append(Moving_car1)
+        #vehicle_list.append(Static_car2)
+        # vehicle_list.append(Moving_car1)
 
         # We will aslo set up the spectator so we can see what we do
         spectator = world.get_spectator()
@@ -452,7 +567,7 @@ def run_simulation(args, client):
         # Setting for Traffic manager 
         # Set route for auto pilot
         traffic_manager.set_path(vehicle, route_1)
-        traffic_manager.set_path(Moving_car1, route_2)
+        #traffic_manager.set_path(Moving_car1, route_2)
 
         # Ignore_Lights
         # for car in vehicle_list:
@@ -468,14 +583,12 @@ def run_simulation(args, client):
         # and assign each of them to a grid position, 
         SensorManager(world, image_queue, display_manager, 'RGBCamera', carla.Transform(carla.Location(x=1, z=1.5)), 
                       vehicle, {}, display_pos=[0, 0])
-        SensorManager(world, lidar_queue, display_manager, 'LiDAR', carla.Transform(carla.Location(x=1.5, z=2.2)), 
-                      vehicle, {'channels' : '64', 'range' : '100', 'upper_fov': '-2', 'lower_fov': '-10',  'points_per_second': '200000', 'rotation_frequency': '30'}, display_pos=[0, 2])
+        SensorManager(world, lidar_queue, display_manager, 'LiDAR', carla.Transform(carla.Location(x=0, z=1.6)), 
+                      vehicle, {'channels' : '64', 'range' : '30', 'upper_fov': '6', 'lower_fov': '-4',  'points_per_second': '1000000', 'rotation_frequency': '100'}, display_pos=[0, 2])
 
         #Simulation loop
         call_exit = False
         time_init_sim = timer.time()
-        arr = np.random.rand(320, 320, 3).astype(np.float32)
-        boxes, classes, labels = predict(arr, model, device, 0.9)
 
         # Create a new thread to process the image
         image_processor_thread = ImageProcessorThread(image_queue, display_manager, display_pos=[0, 1])
@@ -557,12 +670,16 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1280x720',
+        default='800x600',
         help='window resolution (default: 1280x720)')
 
     args = argparser.parse_args()
 
     args.width, args.height = [int(x) for x in args.res.split('x')]
+
+
+    arr = np.random.rand(255, 255, 3).astype(np.float32)
+    boxes, classes, labels = predict(arr, model, device, 0.9)
 
     try:
         client = carla.Client(args.host, args.port)
