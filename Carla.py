@@ -140,7 +140,7 @@ class StateMachine(threading.Thread):
         self.Lidar_result_queue = Lidar_result_queue
         self.vehicle = vehicle
         self.tm = tm
-        self.count = 50
+        self.count = 60
 
     def brake_on_distance(self, distance, x_min, x_max, y_min, y_max):
         return ((distance - x_min) / (x_max - x_min)) * (y_max - y_min) + y_min
@@ -163,15 +163,20 @@ class StateMachine(threading.Thread):
             self.previous_state = self.current_state
 
             if is_obstacle_found:
-                if (8 < distance <= 12) and -10 < x < 0 and (-0.2 <= y <= 0.2):
+                if (8 < distance <= 12) and -12 < x < 0 and (-0.2 <= y <= 0.2):
                     self.tm.global_percentage_speed_difference(50)
                     self.current_state = "Slow Down"
 
-                if (1 < distance <= 6) and x < 0 and (-0.2 <= y <= 0.2):
+                elif (1 < distance <= 6) and x < 0 and (-0.2 <= y <= 0.2):
                     self.tm.global_percentage_speed_difference(50)
                     self.current_state = "Stop"
+            
+            elif (8 < distance <= 12) and -12 < x < 0 and (-1  <= y <= 1):
+                self.tm.global_percentage_speed_difference(50)
+                self.current_state = "Slow Down"
 
             elif (1 < distance <= 6) and (-1 <= y <= 1):
+                self.tm.global_percentage_speed_difference(50)
                 self.current_state = "Stop"
 
         elif self.current_state == "Slow Down":
@@ -206,9 +211,9 @@ class StateMachine(threading.Thread):
                 self.count = self.count - 1
 
             else:
-            # if not is_obstacle_found and (distance > 2):
-                self.count = 50
-                self.current_state = "Pre: Pre Steering"
+                # if not is_obstacle_found and (distance > 2):
+                    self.count = 70
+                    self.current_state = "Pre: Pre Steering"
 
 
         elif self.current_state == "Pre: Pre Steering":
@@ -226,7 +231,8 @@ class StateMachine(threading.Thread):
 
             else:
             # if not is_obstacle_found and (distance > 2):
-                self.count = 50
+                self.count = 100
+                self.tm.global_percentage_speed_difference(20)
                 self.current_state = "Holding"
 
         elif self.current_state == "Holding":
@@ -235,39 +241,35 @@ class StateMachine(threading.Thread):
 
             self.previous_state = self.current_state
 
-            #print("count: ",self.count)
+            print("count: ",self.count)
 
-            if self.count != 0: 
-                self.count = self.count - 1
-
-            # if distance < 2 and y < 0 and x < 0:
-            #     print("Upper Right")
-            # elif distance < 2 and y < 0 and x > 0:
-            #     print("Lower Right")
+            if self.count != 0:
+                if not (distance <= 3 and (x > 0 and y < 0)):
+                    self.count = self.count - 1
 
             else:
+                if distance > 3 and not(x > 0 and y < 0):
                     #and (x > 0) and (-0.2 <= y <= 0.2) and not is_obstacle_found
-                    self.count = 50
+                    self.count = 60
                     self.current_state = "Pos: Change back lane"
 
         elif self.current_state == "Pos: Change back lane":
             if not self.previous_state == "Pos: Change back lane":
                 print("previous_state Change")
+                self.tm.global_percentage_speed_difference(0)
+                self.vehicle.set_autopilot(False)
 
-            self.vehicle.set_autopilot(False)
 
             self.previous_state = self.current_state
 
-            self.vehicle.apply_control(carla.VehicleControl(throttle=1, steer=0.6, brake=0))
-
-            print("count: ",self.count)
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.5, steer=0.6, brake=0))
 
             if self.count != 0: 
                 self.count = self.count - 1
 
             else:
             # if not is_obstacle_found and (distance > 2):
-                self.count = 50
+                self.count = 70
                 self.current_state = "Pos: Return Steering"
 
 
@@ -287,7 +289,7 @@ class StateMachine(threading.Thread):
 
             else:
             # if not is_obstacle_found and (distance > 2):
-                self.count = 50
+                self.count = 60
                 self.current_state = "Normal"
 
 
@@ -450,7 +452,15 @@ class SensorManager:
 
         points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
         points = np.reshape(points, (int(points.shape[0] / 4), 4))
-        
+
+        lidar_data_temp = np.array(points[:, :3])
+
+        if np.any((lidar_data_temp[:, 0] > 0) & (lidar_data_temp[:, 0] <= 15) & (lidar_data_temp[:, 1] < 0.5) & (lidar_data_temp[:, 1] > -0.5) & (lidar_data_temp[:, 2] < 0)):
+            print("At least one point satisfies the conditions.")
+        else:
+            print("No point satisfies the conditions.")
+
+
         lidar_data = np.array(points[:, :2])
 
         self.queue.put(np.copy(lidar_data))
@@ -549,12 +559,12 @@ def run_simulation(args, client):
         vehicle = world.try_spawn_actor(vehicle_bp, spawn_point_1)
         Static_car1 = world.try_spawn_actor(npc_bp, spawn_point_2)
         Static_car2 = world.try_spawn_actor(npc_bp, spawn_point_3)
-        # Moving_car1 = world.try_spawn_actor(npc_bp, spawn_point_4)
+        Moving_car1 = world.try_spawn_actor(npc_bp, spawn_point_4)
         
         vehicle_list.append(vehicle)
         vehicle_list.append(Static_car1)
-        #vehicle_list.append(Static_car2)
-        # vehicle_list.append(Moving_car1)
+        vehicle_list.append(Static_car2)
+        vehicle_list.append(Moving_car1)
 
         # We will aslo set up the spectator so we can see what we do
         spectator = world.get_spectator()
@@ -567,7 +577,9 @@ def run_simulation(args, client):
         # Setting for Traffic manager 
         # Set route for auto pilot
         traffic_manager.set_path(vehicle, route_1)
-        #traffic_manager.set_path(Moving_car1, route_2)
+        traffic_manager.set_path(Moving_car1, route_2)
+
+        time.sleep(0.5)
 
         # Ignore_Lights
         # for car in vehicle_list:
