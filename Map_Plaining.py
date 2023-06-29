@@ -8,7 +8,7 @@ world = client.get_world()
 # Set up the simulator in synchronous mode
 settings = world.get_settings()
 settings.synchronous_mode = True # Enables synchronous mode
-settings.fixed_delta_seconds = 0.05
+settings.fixed_delta_seconds = 0.01
 world.apply_settings(settings)
 
 # Set up the TM in synchronous mode

@@ -36,7 +36,6 @@ import cv2
 import torch
 import queue
 import threading
-
 from utils.coco_names import coco_names
 from models.Model import *
 from utils.detect_utils import *
@@ -47,6 +46,7 @@ image_queue = queue.Queue(maxsize=1)
 lidar_queue = queue.Queue(maxsize=1)
 Lidar_result_queue = queue.Queue(maxsize=1)
 Camera_result_queue = queue.Queue(maxsize=1)
+Temp = queue.Queue(maxsize=1)
 
 # Global variables
 Start_Sig = False
@@ -67,14 +67,16 @@ except ImportError:
 
 def detect_objects(image):
     global is_obstacle_found
+
     start_time = time.time()
     boxes, classes, labels = predict(image, model, device, 0.9)
 
     for box, pred_class, label in zip(boxes, classes, labels):
-        if box is not None:
+        if len(box) > 0 and pred_class in ['Vehicle', 'Pedestrian']:
             is_obstacle_found = True
-        else:
+        elif len(box) == 0:
             is_obstacle_found = False
+
     # get predictions for the current frame  
     # draw boxes
     frame = draw_boxes(boxes, classes, labels, image)
@@ -94,7 +96,6 @@ class ImageProcessorThread(threading.Thread):
         self.surface = None
 
     def run(self):
-        global is_obstacle_found
         while True:
             image = self.image_queue.get()
             image = detect_objects(image)
@@ -140,10 +141,13 @@ class StateMachine(threading.Thread):
         self.Lidar_result_queue = Lidar_result_queue
         self.vehicle = vehicle
         self.tm = tm
-        self.count = 60
+        self.count = 50
 
     def brake_on_distance(self, distance, x_min, x_max, y_min, y_max):
-        return ((distance - x_min) / (x_max - x_min)) * (y_max - y_min) + y_min
+        if distance < 1:
+            return 1
+        else:
+            return ((distance - x_min) / (x_max - x_min)) * (y_max - y_min) + y_min
 
     def transition(self):
         global is_obstacle_found
@@ -153,52 +157,91 @@ class StateMachine(threading.Thread):
         x =  Lidar[1][0]
         y = Lidar[1][1]
 
+        global Temp
+        points = Temp.get()
+        
+        point_x = points[:, 0]
+        point_y = points[:, 1]
+        point_z = points[:, 2]
+        
         if self.current_state == "Normal":
             # precondition
             if not self.previous_state == "Normal":
                 print("previous_state Change")
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.NONE))
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.LowBeam))
                 self.vehicle.set_autopilot(True)
-                self.tm.global_percentage_speed_difference(0)
+                self.tm.vehicle_percentage_speed_difference(self.vehicle, 0)
 
             self.previous_state = self.current_state
 
             if is_obstacle_found:
-                if (8 < distance <= 12) and -12 < x < 0 and (-0.2 <= y <= 0.2):
-                    self.tm.global_percentage_speed_difference(50)
+                #if (8 < distance <= 12) and -12 < x < 0 and (-0.2 <= y <= 0.2):
+                if np.any((point_x >= 9) & (point_x <= 12) & (point_y >= -0.2) & (point_y <= 0.2) & (point_z < -0.5)):
+                    self.tm.vehicle_percentage_speed_difference(self.vehicle, 50)
                     self.current_state = "Slow Down"
 
-                elif (1 < distance <= 6) and x < 0 and (-0.2 <= y <= 0.2):
-                    self.tm.global_percentage_speed_difference(50)
+                elif (1 < distance <= 5) and x < 0 and (-0.2 <= y <= 0.2):
+                    self.tm.vehicle_percentage_speed_difference(self.vehicle, 50)
                     self.current_state = "Stop"
-            
-            elif (8 < distance <= 12) and -12 < x < 0 and (-1  <= y <= 1):
-                self.tm.global_percentage_speed_difference(50)
-                self.current_state = "Slow Down"
 
-            elif (1 < distance <= 6) and (-1 <= y <= 1):
-                self.tm.global_percentage_speed_difference(50)
+            elif (1 < distance <= 5) and (-1 <= y <= 1):
+                self.tm.vehicle_percentage_speed_difference(self.vehicle, 50)
                 self.current_state = "Stop"
 
         elif self.current_state == "Slow Down":
             # precondition 
             if not self.previous_state == "Slow Down":
+                print("previous_state Change")
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.NONE))
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.Brake))
                 self.vehicle.set_autopilot(False)
 
             self.previous_state = self.current_state
 
-            brake_offset = self.brake_on_distance(distance, 12, 8, 0.6, 0.8)
+            brake_offset = self.brake_on_distance(distance, 12, 7, 0.6, 0.8)
             self.vehicle.apply_control(carla.VehicleControl(throttle=0.2, steer=0.0, brake=brake_offset))
-
+            
             if is_obstacle_found:
-                if (1 < distance <= 6) and x < 0 and (-0.2 <= y <= 0.2):
-                    self.current_state = "Stop" 
 
-                elif (6 < distance <= 8) and  -9 < x < 0 and (-0.2 <= y <= 0.2):
+                if np.any((point_x > 5) & (point_x <= 9) & (point_y >= -0.2) & (point_y <= 0.2) & (point_z < -0.5)):
+                    self.current_state = "Pre: Checking"
+
+                elif (1 < distance <= 5) and x < 0 and (-0.2 <= y <= 0.2):
+                    self.current_state = "Stop" 
+                
+            else:
+                self.current_state = "Normal"
+
+        elif self.current_state == "Pre: Checking":
+            # precondition
+            if not self.previous_state == "Pre: Checking":
+                print("previous_state Change")
+                #self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.Brake))
+                self.vehicle.set_autopilot(False)
+
+            self.previous_state = self.current_state
+
+            self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0.0, brake=1))
+
+            #print("count: ",self.count)
+
+            if self.count != 0:
+                if not np.any((point_x < 5) & (point_x > -5) & (point_y >= -0.5) & (point_y <= 0.5) & (point_z < -0.5)): 
+                    self.count = self.count - 1
+
+            else:
+                # if not is_obstacle_found and (distance > 2):
+                    self.count = 200
                     self.current_state = "Pre: Change lane"
+
 
         elif self.current_state == "Pre: Change lane":
             # precondition
             if not self.previous_state == "Pre: Change lane":
+                print("previous_state Change")
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.NONE))
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.LeftBlinker))
                 self.vehicle.set_autopilot(False)
 
             self.previous_state = self.current_state
@@ -218,6 +261,8 @@ class StateMachine(threading.Thread):
 
         elif self.current_state == "Pre: Pre Steering":
             if not self.previous_state == "Pre: Pre Steering":
+                print("previous_state Change")
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.NONE))
                 self.vehicle.set_autopilot(False)
 
             self.previous_state = self.current_state
@@ -232,19 +277,22 @@ class StateMachine(threading.Thread):
             else:
             # if not is_obstacle_found and (distance > 2):
                 self.count = 100
-                self.tm.global_percentage_speed_difference(20)
+                self.tm.vehicle_percentage_speed_difference(self.vehicle, 20)
                 self.current_state = "Holding"
 
         elif self.current_state == "Holding":
             if not self.previous_state == "Holding":
+                print("previous_state Change")
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.NONE))
                 self.vehicle.set_autopilot(True)
 
             self.previous_state = self.current_state
 
-            print("count: ",self.count)
-
+            # print("count: ",self.count)
+ 
             if self.count != 0:
-                if not (distance <= 3 and (x > 0 and y < 0)):
+                if not np.any((point_x < 4) & (point_x > 4) & (point_y >= -0.2) & (point_y <= 0.2) & (point_z < -0.5)):
+                #if not (distance <= 3.5 and (x > 0 and y < 0)):
                     self.count = self.count - 1
 
             else:
@@ -256,7 +304,8 @@ class StateMachine(threading.Thread):
         elif self.current_state == "Pos: Change back lane":
             if not self.previous_state == "Pos: Change back lane":
                 print("previous_state Change")
-                self.tm.global_percentage_speed_difference(0)
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.RightBlinker))
+                self.tm.vehicle_percentage_speed_difference(self.vehicle, 0)
                 self.vehicle.set_autopilot(False)
 
 
@@ -276,6 +325,7 @@ class StateMachine(threading.Thread):
         elif self.current_state == "Pos: Return Steering":
             if not self.previous_state == "Pos: Return Steering":
                 print("previous_state Change")
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.NONE))
                 self.vehicle.set_autopilot(False)
 
             self.previous_state = self.current_state
@@ -292,15 +342,19 @@ class StateMachine(threading.Thread):
                 self.count = 60
                 self.current_state = "Normal"
 
-
+        elif np.any((point_x > 5) & (point_x <= 12) & (point_y >= -0.2) & (point_y <= 0.2) & (point_z < -0.5)):
+            self.tm.vehicle_percentage_speed_difference(self.vehicle, 50)
+            self.current_state = "Slow Down"
 
         elif self.current_state == "Stop":
             if not self.previous_state == "Stop":
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.NONE))
+                self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.Brake))
                 self.vehicle.set_autopilot(False)
 
             self.previous_state = self.current_state
 
-            brake_offset = self.brake_on_distance(distance, 6, 3, 0.8, 1)
+            brake_offset = self.brake_on_distance(distance, 5, 3, 0.8, 1)
             self.vehicle.apply_control(carla.VehicleControl(throttle=0, steer=0.0, brake=brake_offset))
 
             if not is_obstacle_found:
@@ -318,6 +372,9 @@ class StateMachine(threading.Thread):
         
     def run(self): 
         global Start_Sig
+
+        #self.vehicle.set_light_state(carla.VehicleLightState(carla.VehicleLightState.RightBlinker | carla.VehicleLightState.LowBeam))
+
         while True:
             if self.current_state == "Start":
                 if Start_Sig:
@@ -398,7 +455,7 @@ class SensorManager:
             camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
             disp_size = self.display_man.get_display_size()
             camera_bp.set_attribute('image_size_x', f"{256}")
-            camera_bp.set_attribute('image_size_y', f"{256}")
+            camera_bp.set_attribute('image_size_y', f"{256}") 
 
             for key in sensor_options:
                 camera_bp.set_attribute(key, sensor_options[key])
@@ -453,13 +510,9 @@ class SensorManager:
         points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
         points = np.reshape(points, (int(points.shape[0] / 4), 4))
 
+        global Temp
         lidar_data_temp = np.array(points[:, :3])
-
-        if np.any((lidar_data_temp[:, 0] > 0) & (lidar_data_temp[:, 0] <= 15) & (lidar_data_temp[:, 1] < 0.5) & (lidar_data_temp[:, 1] > -0.5) & (lidar_data_temp[:, 2] < 0)):
-            print("At least one point satisfies the conditions.")
-        else:
-            print("No point satisfies the conditions.")
-
+        Temp.put(np.copy(lidar_data_temp))
 
         lidar_data = np.array(points[:, :2])
 
@@ -513,19 +566,22 @@ def run_simulation(args, client):
 
         # Route 1
         spawn_point_1 =  spawn_points[60]
-        spawn_point_2 =  spawn_points[10]
-        spawn_point_3 =  spawn_points[47]
-        spawn_point_4 =  spawn_points[51]
+        spawn_point_2 =  spawn_points[45]
+        spawn_point_3 =  spawn_points[10]
+        spawn_point_4 =  spawn_points[50]
+        # spawn_point_5 =  spawn_points[51]
+        # spawn_point_6 =  spawn_points[52]
+        # spawn_point_7 =  spawn_points[104]
 
 
         # Create route 1 from the chosen spawn points
-        route_1_indices = [149, 21, 105, 52, 104, 140, 10]
+        route_1_indices = [149, 21, 105, 50 ,52, 104, 140, 10]
         route_1 = []
         for ind in route_1_indices:
             route_1.append(spawn_points[ind].location)
 
         # Create route 2 from the chosen spawn points
-        route_2_indices = [103, 111, 115, 140]
+        route_2_indices = [52, 104, 115, 67, 140]
         route_2 = []
         for ind in route_2_indices:
             route_2.append(spawn_points[ind].location)
@@ -559,33 +615,40 @@ def run_simulation(args, client):
         vehicle = world.try_spawn_actor(vehicle_bp, spawn_point_1)
         Static_car1 = world.try_spawn_actor(npc_bp, spawn_point_2)
         Static_car2 = world.try_spawn_actor(npc_bp, spawn_point_3)
+
         Moving_car1 = world.try_spawn_actor(npc_bp, spawn_point_4)
+        # Moving_car2 = world.try_spawn_actor(npc_bp, spawn_point_5)
+        # Moving_car3 = world.try_spawn_actor(npc_bp, spawn_point_6)
+        # Moving_car4 = world.try_spawn_actor(npc_bp, spawn_point_7)
         
         vehicle_list.append(vehicle)
         vehicle_list.append(Static_car1)
         vehicle_list.append(Static_car2)
         vehicle_list.append(Moving_car1)
+        # vehicle_list.append(Moving_car2)
+        # vehicle_list.append(Moving_car3)
+        # vehicle_list.append(Moving_car4)
 
         # We will aslo set up the spectator so we can see what we do
         spectator = world.get_spectator()
         
-        # Set viewpoint at main actor
-        transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-4,z=2.5)),vehicle.get_transform().rotation)
-        spectator.set_transform(transform)
-
         #----------------------------------------------------------------------------
         # Setting for Traffic manager 
         # Set route for auto pilot
         traffic_manager.set_path(vehicle, route_1)
         traffic_manager.set_path(Moving_car1, route_2)
+        # traffic_manager.set_path(Moving_car2, route_2)
+        # traffic_manager.set_path(Moving_car3, route_2)
+        # traffic_manager.set_path(Moving_car4, route_2)
 
-        time.sleep(0.5)
+        time.sleep(2)
 
         # Ignore_Lights
         # for car in vehicle_list:
         #     print(car)
         traffic_manager.ignore_lights_percentage(vehicle, 100)
         traffic_manager.ignore_vehicles_percentage(vehicle, 100)
+        traffic_manager.ignore_lights_percentage(Moving_car1, 100)
 
         # Display Manager organize all the sensors an its display in a window
         # If can easily configure the grid and the total window size
@@ -600,6 +663,7 @@ def run_simulation(args, client):
 
         #Simulation loop
         call_exit = False
+        is_executed = False
         time_init_sim = timer.time()
 
         # Create a new thread to process the image
@@ -617,18 +681,51 @@ def run_simulation(args, client):
         lidar_queue.join()
         Lidar_result_queue.join()
         
-        print("Threads are running:", threading.active_count())
+        #print("Threads are running:", threading.active_count())
 
-        
+
+        pre_x_coordinate = 0
+
         while True:
-            global Start_Sig
-
 
             # Carla Tickpyth
             if args.sync:
                 world.tick()
             else:
                 world.wait_for_tick()
+
+            global Start_Sig
+
+            # Get the vehicle's location
+            location = vehicle.get_location()
+
+            transform = vehicle.get_transform()
+
+            #spectator.set_transform(carla.Transform(transform.location + carla.Location(x=-5, z=3)), vehicle.get_transform().rotation)
+            
+            transform = carla.Transform(vehicle.get_transform().transform(carla.Location(x=-10,z=3)),vehicle.get_transform().rotation) 
+            spectator.set_transform(transform) 
+            
+            # Get the x-coordinate
+        
+            x_coordinate = location.x
+            pre_x_coordinate = x_coordinate
+
+            # print(x_coordinate)
+
+
+            if not is_executed:
+                if 40 <= x_coordinate <= 42 and pre_x_coordinate > x_coordinate:
+                    print("Start ostacle moving car 1")
+                    Moving_car1.set_autopilot(True)
+                    # Moving_car2.set_autopilot(True)
+                    # Moving_car3.set_autopilot(True)
+                    # Moving_car4.set_autopilot(True)
+                    traffic_manager.vehicle_percentage_speed_difference(Moving_car1,60)
+                    # traffic_manager.vehicle_percentage_speed_difference(Moving_car2,50)
+                    # traffic_manager.vehicle_percentage_speed_difference(Moving_car3,40)
+                    # traffic_manager.vehicle_percentage_speed_difference(Moving_car4,30)
+                    is_executed = True
 
             # Render received data
             display_manager.render()
@@ -645,7 +742,7 @@ def run_simulation(args, client):
             
             if call_exit:
                 break
-        
+    
     finally:
         if display_manager:
             display_manager.destroy()
@@ -701,7 +798,6 @@ def main():
 
     except KeyboardInterrupt:
         print('\nCancelled by user. Bye!')
-        sys.exit(0)
 
 
 if __name__ == '__main__':
