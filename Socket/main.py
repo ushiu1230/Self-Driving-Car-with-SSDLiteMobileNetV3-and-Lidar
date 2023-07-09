@@ -42,46 +42,52 @@ def draw_boxes(boxes, classes, image):
 
 def start_video_stream():
 	client_socket,addr = server_socket.accept()
-	camera = True
+	camera = False
 
 	data = b""
 	payload_size = struct.calcsize("Q")
 
-	if camera == True:
-		vid = cv2.VideoCapture(0)
-	else:
-		vid = cv2.VideoCapture('Pov_Drive_to_Sunrise.mp4')
+	# if camera == True:
+	# 	vid = cv2.VideoCapture(0)
+	# else:
+	vid = cv2.VideoCapture('D:/UIT/Study/KLTN/Object/Socket/Pov_Drive_to_Sunrise.mp4')
+	print("isOpened: ",vid.isOpened())
 	print('CLIENT {} CONNECTED!'.format(addr))
 	
+	# img,frame = vid.read()
+
 	if client_socket:
 		while(vid.isOpened()):
 			img,frame = vid.read()
+			# print('ret: ', img)
 			frame  = imutils.resize(frame,width=256, height = 256)
+
 			a = pickle.dumps(frame)
 			message = struct.pack("Q",len(a))+a
 			client_socket.sendall(message)
 			# cv2.imshow("TRANSMITTING TO JETSON",frame)
 
-			# while len(data) < payload_size:
-			# 	packet = client_socket.recv(4*1024)
-			# 	if not packet: break
-			# 	data+=packet
-			# packed_msg_size = data[:payload_size]
+			while len(data) < payload_size:
+				packet = client_socket.recv(4*1024)
+				if not packet: break
+				data+=packet
+
+			packed_msg_size = data[:payload_size]
 			
-			# data = data[payload_size:]
-			# msg_size = struct.unpack("Q",packed_msg_size)[0]
+			data = data[payload_size:]
+			msg_size = struct.unpack("Q",packed_msg_size)[0]
 
-			# while len(data) < msg_size:
-			# 	data += client_socket.recv(4*1024)
-			# frame_data = data[:msg_size]
-			# data  = data[msg_size:]
+			while len(data) < msg_size:
+				data += client_socket.recv(4*1024)
+			frame_data = data[:msg_size]
+			data  = data[msg_size:]
 
-			# print_data = pickle.loads(frame_data)
+			print_data = pickle.loads(frame_data)
 
-			# image_show = draw_boxes(boxes = print_data[1], classes = print_data[2], image = frame)
+			image_show = draw_boxes(boxes = print_data[0], classes = print_data[1], image = frame)
 
-			# print('fps: ', print_data[0])
-			# cv2.imshow("recive data: ",image_show)
+			# print('fps: ', print_data[2])
+			cv2.imshow("recive data: ",image_show)
 
 			key = cv2.waitKey(1) & 0xFF
 			if key ==ord('q'):
